@@ -32,4 +32,22 @@ if (fs.existsSync(srcAssets)) {
   console.log('✓ Copied assets/ -> dist/assets/');
 }
 
+// Copy icon files to dist
+const iconFiles = [
+  'favicon.ico',
+  'favicon.svg',
+  'favicon-32x32.png',
+  'favicon-16x16.png',
+  'apple-touch-icon.png'
+];
+
+for (const icon of iconFiles) {
+  const src = path.resolve(rootDir, icon);
+  const dest = path.resolve(distDir, icon);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dest);
+    console.log(`✓ Copied ${icon} -> dist/${icon}`);
+  }
+}
+
 console.log('Build completed successfully! Deployable output is ready in dist/ and root.');
