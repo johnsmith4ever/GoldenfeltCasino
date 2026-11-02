@@ -2,6 +2,8 @@
 
 An educational, play-money-only casino simulation.
 
+**Live URL:** [https://goldenfeltcasino.perenne-ai.co.uk](https://goldenfeltcasino.perenne-ai.co.uk)
+
 > **Disclaimer:** Golden Felt Casino is designed purely for educational and entertainment purposes using simulated play-money. It has **no real-money transactions, deposits, withdrawals, or cash prizes**.
 
 ## 🃏 Features & Games
