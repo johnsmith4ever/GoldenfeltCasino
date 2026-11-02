@@ -1,0 +1,11 @@
+{
+  "name": "goldenfelt-casino",
+  "version": "1.0.0",
+  "description": "Educational play-money casino simulation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node build.js"
+  }
+}
