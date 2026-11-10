@@ -2,8 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useChips, fmt } from '../state/chips'
 import { sfx } from '../lib/audio'
 import { GameShell, GoldBurst } from '../components/GameShell'
-import { ChipSelector } from '../components/Chip'
-import { Rocket as RocketIcon, Flame, Zap, ShieldAlert, Sparkles, TrendingUp, RotateCcw } from 'lucide-react'
+import { Rocket as RocketIcon } from 'lucide-react'
 
 type GamePhase = 'betting' | 'countdown' | 'flying' | 'crashed' | 'cashedOut'
 
@@ -22,11 +21,9 @@ const PRESET_BETS = [25, 100, 500, 1000, 5000, 25000]
 
 export default function Rocket() {
   const { balance, bet, payout, refund, markHand } = useChips()
-  const [chipVal, setChipVal] = useState(100)
   const [wager, setWager] = useState(0)
   const [phase, setPhase] = useState<GamePhase>('betting')
   const [multiplier, setMultiplier] = useState(1.0)
-  const [crashPoint, setCrashPoint] = useState(1.0)
   const [history, setHistory] = useState<number[]>([1.84, 3.42, 1.15, 12.5, 2.05, 1.02, 5.14, 1.45])
   const [autoCashOut, setAutoCashOut] = useState<string>('2.00')
   const [autoCashEnabled, setAutoCashEnabled] = useState(false)
@@ -108,7 +105,6 @@ export default function Rocket() {
     const currentWager = wager >= 25 ? wager : 25
     markHand('rocket', currentWager)
     const nextCrash = generateCrashMultiplier()
-    setCrashPoint(nextCrash)
     crashPointRef.current = nextCrash
     setPhase('countdown')
     setCountdown(3)
@@ -170,7 +166,7 @@ export default function Rocket() {
   }
 
   // Draw rocket space trajectory on Canvas
-  const drawCanvas = (mult: number, elapsed: number, exploded: boolean) => {
+  const drawCanvas = (_mult: number, elapsed: number, exploded: boolean) => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')

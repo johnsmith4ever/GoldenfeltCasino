@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { usePlayer } from '../state/profile'
 import { fmt } from '../state/chips'
+import { ITEMS_BY_ID } from '../state/shop'
 import { getStakePool } from '../lib/stakeAndClub'
+import { fetchGlobalLeaderboard, isSupabaseConfigured, type GlobalPlayerRecord } from '../lib/supabase'
 
 interface PlayerStats {
   name: string
@@ -13,6 +15,7 @@ interface PlayerStats {
   netProfit: number
   stakeAmount: number
   stakePercent: number
+  nametagId?: string
 }
 
 function getPlayerStorageKey(playerName: string, namespace: string): string {
@@ -28,9 +31,18 @@ function loadPlayerChips(playerName: string, pool: { totalPool: number; contribu
   const stakeAmount = stakeKey ? pool.contributions[stakeKey] : 0
   const stakePercent = pool.totalPool > 0 ? (stakeAmount / pool.totalPool) * 100 : 0
 
+  let nametagId = 'tag-guest'
+  try {
+    const rawShop = localStorage.getItem(getPlayerStorageKey(playerName, 'shop'))
+    if (rawShop) {
+      const p = JSON.parse(rawShop)
+      if (p?.equipped?.tag) nametagId = p.equipped.tag
+    }
+  } catch {}
+
   try {
     const raw = localStorage.getItem(getPlayerStorageKey(playerName, 'chips'))
-    if (!raw) return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent }
+    if (!raw) return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent, nametagId }
     const data = JSON.parse(raw) as {
       balance?: number
       totalWon?: number
@@ -53,9 +65,10 @@ function loadPlayerChips(playerName: string, pool: { totalPool: number; contribu
       netProfit: totalWon - totalLost,
       stakeAmount,
       stakePercent,
+      nametagId,
     }
   } catch {
-    return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent }
+    return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent, nametagId }
   }
 }
 
@@ -80,22 +93,84 @@ function MedalIcon({ rank }: { rank: number }) {
 export default function Leaderboard() {
   const { players, activeName } = usePlayer()
   const [activeSortKey, setActiveSortKey] = useState<SortKey>('balance')
+  const [globalPlayers, setGlobalPlayers] = useState<GlobalPlayerRecord[]>([])
+  const [isLive, setIsLive] = useState(isSupabaseConfigured())
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const loadGlobal = () => {
+      fetchGlobalLeaderboard().then((res) => {
+        if (res && res.length > 0) {
+          setGlobalPlayers(res)
+          setIsLive(true)
+        }
+      })
+    }
+    loadGlobal()
+    const interval = setInterval(loadGlobal, 8000)
+    return () => clearInterval(interval)
+  }, [])
 
   const stats = useMemo(() => {
     const pool = getStakePool()
-    const allNames = Array.from(new Set([...players, ...Object.keys(pool.contributions)]))
-    return allNames
-      .map((name) => loadPlayerChips(name, pool))
-      .sort((a, b) => b[activeSortKey] - a[activeSortKey])
-  }, [players, activeSortKey])
+    const allLocalNames = Array.from(new Set([...players, ...Object.keys(pool.contributions)]))
+    const localMap = new Map<string, PlayerStats>()
+
+    for (const name of allLocalNames) {
+      localMap.set(name.toLowerCase(), loadPlayerChips(name, pool))
+    }
+
+    // Merge global players from Supabase
+    for (const gp of globalPlayers) {
+      const key = gp.name.toLowerCase()
+      const existing = localMap.get(key)
+      if (existing) {
+        localMap.set(key, {
+          name: gp.name,
+          balance: Math.max(existing.balance, gp.balance),
+          totalWon: Math.max(existing.totalWon, gp.total_won),
+          totalLost: Math.max(existing.totalLost, gp.total_lost),
+          handsPlayed: Math.max(existing.handsPlayed, gp.hands_played),
+          totalBet: Math.max(existing.totalBet, gp.total_bet),
+          netProfit: Math.max(existing.totalWon, gp.total_won) - Math.max(existing.totalLost, gp.total_lost),
+          stakeAmount: existing.stakeAmount,
+          stakePercent: existing.stakePercent,
+          nametagId: gp.nametag_id || existing.nametagId,
+        })
+      } else {
+        localMap.set(key, {
+          name: gp.name,
+          balance: gp.balance,
+          totalWon: gp.total_won,
+          totalLost: gp.total_lost,
+          handsPlayed: gp.hands_played,
+          totalBet: gp.total_bet,
+          netProfit: gp.total_won - gp.total_lost,
+          stakeAmount: 0,
+          stakePercent: 0,
+          nametagId: gp.nametag_id || 'tag-guest',
+        })
+      }
+    }
+
+    return Array.from(localMap.values()).sort((a, b) => b[activeSortKey] - a[activeSortKey])
+  }, [players, activeSortKey, globalPlayers])
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6">
       <div className="mb-6 text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a227]/30 bg-black/50 px-3 py-1 mb-2">
+          <span className={`h-2 w-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+          <span className="text-[10px] font-bold tracking-widest text-[#f6e27a]">
+            {isLive ? 'LIVE GLOBAL SYNC ACTIVE' : 'LOCAL DEVICE MODE'}
+          </span>
+        </div>
         <p className="text-[10px] tracking-[0.4em] text-[#b3a06b]">GOLDEN FELT RANKINGS</p>
         <h1 className="font-display gold-text-bright mt-2 text-3xl font-black tracking-[0.18em] sm:text-4xl">LEADERBOARD</h1>
         <p className="mt-2 text-[13px] text-[#a89872]">
-          Rankings across all players on this device · {players.length} player{players.length !== 1 ? 's' : ''}
+          {isLive
+            ? `Global multi-device sync online · ${stats.length} active high roller${stats.length !== 1 ? 's' : ''}`
+            : `Rankings across all players on this device · ${players.length} player${players.length !== 1 ? 's' : ''}`}
         </p>
         <div className="divider-gold mx-auto mt-3 w-48" />
       </div>
@@ -152,11 +227,16 @@ export default function Leaderboard() {
                       <MedalIcon rank={i + 1} />
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-display text-[16px] font-bold text-[#f2e6c9] truncate">{s.name}</span>
                         {isMe && (
                           <span className="rounded bg-[#c9a227]/20 border border-[#c9a227]/40 px-2 py-0.5 text-[9px] font-bold text-[#f6e27a]">
                             YOU
+                          </span>
+                        )}
+                        {ITEMS_BY_ID[s.nametagId || 'tag-guest'] && (
+                          <span className="rounded bg-[#f59e0b]/15 border border-[#f59e0b]/35 px-2 py-0.5 text-[9px] font-bold tracking-wider text-[#fde047]">
+                            {ITEMS_BY_ID[s.nametagId || 'tag-guest'].title || ITEMS_BY_ID[s.nametagId || 'tag-guest'].name}
                           </span>
                         )}
                       </div>

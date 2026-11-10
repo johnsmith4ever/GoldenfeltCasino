@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Check, Gift, Lock, TrendingUp, Users, Coins } from 'lucide-react'
+import { Check, Gift, Lock } from 'lucide-react'
 import { Chip } from '../components/Chip'
 import { Nametag } from '../components/Nametag'
 import { useChips, fmt } from '../state/chips'

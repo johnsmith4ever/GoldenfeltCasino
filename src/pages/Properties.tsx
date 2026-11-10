@@ -3,9 +3,10 @@ import { useChips, fmt, PROPERTY_DEFS, type PropertyId } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { useNow } from '../state/shop'
 import { sfx } from '../lib/audio'
-import { getStakePool, investInStakePool, getPlayerStake } from '../lib/stakeAndClub'
+import { getStakePool, investInStakePool } from '../lib/stakeAndClub'
 import { PropertyShowcase3D } from '../components/PropertyShowcase3D'
-import { Building2, TrendingUp, DollarSign, PieChart, Coins, Sparkles, Zap, ArrowUpRight } from 'lucide-react'
+import { fetchGlobalStakeInvestors, isSupabaseConfigured, type GlobalStakeInvestor } from '../lib/supabase'
+import { Zap } from 'lucide-react'
 
 // Colors contrasting with red (#ef4444)
 const CONTRASTING_COLORS = [
@@ -18,17 +19,6 @@ const CONTRASTING_COLORS = [
   '#ec4899', // Hot Pink
   '#14b8a6', // Teal
 ]
-
-const PROPERTY_ICONS: Record<string, string> = {
-  apartment: '🏢',
-  lounge: '🏙️',
-  bar: '🍸',
-  mall: '🛍️',
-  hotel: '🏨',
-  marina: '🛥️',
-  island: '🏝️',
-  airport: '✈️',
-}
 
 // Calculate SVG donut slice path
 function describeDonutSlice(
@@ -71,12 +61,27 @@ export default function Properties() {
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [hoveredSlice, setHoveredSlice] = useState<string | null>(null)
+  const [globalInvestors, setGlobalInvestors] = useState<GlobalStakeInvestor[]>([])
 
   useEffect(() => {
     const handler = () => setRefreshKey((k) => k + 1)
     window.addEventListener('stake-pool-updated', handler)
     return () => window.removeEventListener('stake-pool-updated', handler)
   }, [])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const loadInvestors = () => {
+      fetchGlobalStakeInvestors().then((res) => {
+        if (res && res.length > 0) {
+          setGlobalInvestors(res)
+        }
+      })
+    }
+    loadInvestors()
+    const timer = setInterval(loadInvestors, 8000)
+    return () => clearInterval(timer)
+  }, [refreshKey])
 
   // Total pending property income
   const totalPending = useMemo(() => {
@@ -152,9 +157,31 @@ export default function Properties() {
     }
   }
 
-  // Stake Pool Data
-  const pool = useMemo(() => getStakePool(), [refreshKey])
-  const myStake = useMemo(() => getPlayerStake(playerName), [playerName, refreshKey])
+  // Stake Pool Data (merged local + Supabase global)
+  const pool = useMemo(() => {
+    const local = getStakePool()
+    const merged = { ...local.contributions }
+
+    for (const gi of globalInvestors) {
+      const existingKey = Object.keys(merged).find((k) => k.toLowerCase() === gi.player_name.toLowerCase())
+      if (existingKey) {
+        merged[existingKey] = Math.max(merged[existingKey], gi.chips_invested)
+      } else {
+        merged[gi.player_name] = gi.chips_invested
+      }
+    }
+
+    const totalPool = Object.values(merged).reduce((s, v) => s + v, 0)
+    return { contributions: merged, totalPool }
+  }, [refreshKey, globalInvestors])
+
+  const myStake = useMemo(() => {
+    const cleanName = (playerName || '').trim().toLowerCase()
+    const matchKey = Object.keys(pool.contributions).find((k) => k.toLowerCase() === cleanName)
+    const contribution = matchKey ? pool.contributions[matchKey] : 0
+    const percent = pool.totalPool > 0 ? (contribution / pool.totalPool) * 100 : 0
+    return { totalPool: pool.totalPool, contribution, percent }
+  }, [playerName, pool])
 
   // Build shareholders list with YOU being RED and others contrasting colors
   const shareholders = useMemo(() => {
@@ -478,7 +505,7 @@ export default function Properties() {
           const pending = wallet.propertyPending(prop.id as PropertyId, now)
           const nextCost = Math.round(prop.price * Math.pow(1.7, state.level))
           const canAfford = wallet.balance >= nextCost
-          const icon = prop.icon || PROPERTY_ICONS[prop.id] || '🏢'
+          const icon = prop.icon
           const slotNum = index + 1
           const isOwned = state.level > 0
 

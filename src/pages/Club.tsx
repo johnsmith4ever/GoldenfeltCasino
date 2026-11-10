@@ -5,7 +5,7 @@ import { useShop } from '../state/shop'
 import { sfx } from '../lib/audio'
 import { isClubMember, joinClub, getClubMembers } from '../lib/stakeAndClub'
 import { Nametag } from '../components/Nametag'
-import { Crown, Lock, Check, Award, Sparkles, Shield, Trophy } from 'lucide-react'
+import { Crown, Lock, Check } from 'lucide-react'
 
 const ENTRANCE_FEE = 250000
 
@@ -26,7 +26,7 @@ export default function Club() {
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [memberVersion, setMemberVersion] = useState(0)
+  const [, setMemberVersion] = useState(0)
 
   // Backup tools
   const [importCode, setImportCode] = useState('')

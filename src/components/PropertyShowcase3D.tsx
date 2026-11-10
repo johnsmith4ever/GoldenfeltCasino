@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { PROPERTY_DEFS, type PropertyId, fmt } from '../state/chips'
 import { sfx } from '../lib/audio'
-import { Sparkles, Coins, Zap, Eye, RotateCw } from 'lucide-react'
+import { Coins, Zap, RotateCw } from 'lucide-react'
 
 interface PropertyState {
   level: number
@@ -227,7 +227,7 @@ export function PropertyShowcase3D({
                   {isOwned && (
                     <div
                       key={`cash-surge-${tickEffect}`}
-                      className="pointer-events-none absolute -top-2 flex items-center gap-1 rounded-full border border-[#86efac]/60 bg-black/90 px-2.5 py-1 text-[11px] font-black text-[#86efac] shadow-[0_0_15px_rgba(16,185,129,0.7)] animate-[bounce_1s_ease-out]"
+                      className="pointer-events-none absolute -top-2 z-30 flex items-center gap-1 rounded-full border border-[#86efac]/60 bg-black/90 px-2.5 py-1 text-[11px] font-black text-[#86efac] shadow-[0_0_15px_rgba(16,185,129,0.7)] float-up-anim"
                     >
                       <Coins size={11} className="text-[#fde047]" />
                       <span>+{fmt(prop.perSec * state.level)}</span>

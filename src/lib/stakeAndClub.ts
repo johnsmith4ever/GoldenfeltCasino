@@ -1,3 +1,5 @@
+import { investInGlobalStake, joinGlobalClub } from './supabase'
+
 export interface StakePoolData {
   contributions: Record<string, number>
   totalPool: number
@@ -44,6 +46,7 @@ export function investInStakePool(
   try {
     localStorage.setItem(STAKE_KEY, JSON.stringify({ contributions: current.contributions }))
     window.dispatchEvent(new Event('stake-pool-updated'))
+    investInGlobalStake(playerName, amount).catch(() => {})
   } catch {}
 
   const totalPool = Object.values(current.contributions).reduce((sum, v) => sum + (Number(v) || 0), 0)
@@ -98,6 +101,7 @@ export function joinClub(playerName: string, title = 'High Roller'): ClubMember[
     const updated = [...members, newMember]
     try {
       localStorage.setItem(CLUB_KEY, JSON.stringify(updated))
+      joinGlobalClub(playerName, title).catch(() => {})
     } catch {}
     return updated
   }

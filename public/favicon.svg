@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="gold" cx="50%" cy="45%" r="55%">
+      <stop offset="0%" stop-color="#fae79d" />
+      <stop offset="40%" stop-color="#dfb957" />
+      <stop offset="80%" stop-color="#b88a24" />
+      <stop offset="100%" stop-color="#936b18" />
+    </radialGradient>
+    <radialGradient id="darkBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1c1811" />
+      <stop offset="85%" stop-color="#120f0a" />
+      <stop offset="100%" stop-color="#0a0805" />
+    </radialGradient>
+    <!-- Single circular path starting at top center going clockwise -->
+    <path id="emblemCircle" d="M 256,256 m 0,-174 a 174,174 0 1,1 0,348 a 174,174 0 1,1 0,-348" fill="none" />
+  </defs>
+
+  <!-- Circular dark medallion -->
+  <circle cx="256" cy="256" r="248" fill="url(#darkBg)" />
+
+  <!-- Outer gold border -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#gold)" stroke-width="8" />
+
+  <!-- Inner gold ring border -->
+  <circle cx="256" cy="256" r="96" fill="none" stroke="url(#gold)" stroke-width="8" />
+
+  <!-- Center GF text in classical bold serif -->
+  <text x="256" y="285" font-family="'Cinzel', 'Playfair Display', 'Times New Roman', 'Georgia', serif" font-size="88" font-weight="900" fill="url(#gold)" text-anchor="middle" letter-spacing="2">GF</text>
+
+  <!-- Circular text along emblem ring -->
+  <text fill="url(#gold)" font-family="'Cinzel', 'Playfair Display', 'Times New Roman', 'Georgia', serif" font-size="27" font-weight="bold" letter-spacing="7.5">
+    <textPath href="#emblemCircle" startOffset="28%">· FINE GAMING · GOLDEN FELT · EST. MMXXVI </textPath>
+  </text>
+</svg>

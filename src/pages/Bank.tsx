@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { sfx } from '../lib/audio'
-import { CheckCircle2, Sparkles, AlertCircle } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
 
 // Gift passwords - hardcoded
 const GIFT_CONFIGS = {
@@ -182,7 +182,7 @@ export default function Bank() {
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => {
     return localStorage.getItem('gf-great-admin-unlocked') === 'true'
   })
-  const [adminKey, setAdminKey] = useState(0)
+  const [, setAdminKey] = useState(0)
 
   function isLifetimeRedeemed(user: 'Kierash' | 'Nik'): boolean {
     return localStorage.getItem(LIFETIME_CLAIM_PREFIX + user) === 'true'

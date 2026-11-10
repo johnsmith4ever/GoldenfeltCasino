@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { playerStorageKey, usePlayer } from './profile'
 import { credit as walletCredit, debit as walletDebit, refund as walletRefund, setBalance as walletSetBalance, tokenAdd, tokenRemove } from './wallet.js'
+import { syncPlayerToSupabase } from '../lib/supabase'
 
 export const STARTING_CHIPS = 5000
 export const MIN_BET = 25
@@ -32,7 +33,7 @@ type PropertyState = { level: number; lastCollectedAt: number }
 type LoanState = { principal: number; balance: number; rate: number; lastAccruedAt: number; interestAccrued: number }
 type DailyState = { day: string; games: string[]; hands: number; wins: number; claimed: string[]; questChips: number; questTokens: number; tokenUses: number; tokenUseById: Partial<Record<TokenId, number>>; tokenEarned: number }
 type WeeklyState = { week: string; hands: number; claimed: boolean }
-interface ChipsSave {
+export interface ChipsSave {
   balance: number; totalWon: number; totalLost: number; handsPlayed: number; totalBet: number
   inventory: Record<TokenId, number>; properties: Record<PropertyId, PropertyState>; loan: LoanState | null
   totalRepaid: number; bankruptcyUntil: number; lastWheelAt: number; lastBailoutAt: number
@@ -140,8 +141,13 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     stateRef.current = state
-    try { localStorage.setItem(playerStorageKey('chips', playerName), JSON.stringify(state)); setStorageError('') }
-    catch { setStorageError('Progress could not be saved. Browser storage may be full or disabled; export a backup and free some site storage.') }
+    try {
+      localStorage.setItem(playerStorageKey('chips', playerName), JSON.stringify(state))
+      setStorageError('')
+      syncPlayerToSupabase(playerName, state)
+    } catch {
+      setStorageError('Progress could not be saved. Browser storage may be full or disabled; export a backup and free some site storage.')
+    }
   }, [state, playerName])
 
   useEffect(() => {
