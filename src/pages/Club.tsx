@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { useShop } from '../state/shop'
 import { sfx } from '../lib/audio'
 import { isClubMember, joinClub, getClubMembers } from '../lib/stakeAndClub'
+import { fetchGlobalClubMembers, isSupabaseConfigured, type GlobalClubMember } from '../lib/supabase'
 import { Nametag } from '../components/Nametag'
 import { Crown, Lock, Check } from 'lucide-react'
 
@@ -26,15 +27,54 @@ export default function Club() {
 
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
-  const [, setMemberVersion] = useState(0)
+  const [memberVersion, setMemberVersion] = useState(0)
+  const [globalClubMembers, setGlobalClubMembers] = useState<GlobalClubMember[]>([])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const loadGlobal = () => {
+      fetchGlobalClubMembers().then((res) => {
+        if (res && res.length > 0) {
+          setGlobalClubMembers(res)
+        }
+      })
+    }
+    loadGlobal()
+    const timer = setInterval(loadGlobal, 8000)
+    return () => clearInterval(timer)
+  }, [memberVersion])
+
+  const members = useMemo(() => {
+    const local = getClubMembers()
+    const map = new Map<string, { name: string; title: string; joinedAt: number }>()
+
+    for (const m of local) {
+      map.set(m.name.toLowerCase(), m)
+    }
+
+    for (const gm of globalClubMembers) {
+      const key = gm.name.toLowerCase()
+      if (!map.has(key)) {
+        map.set(key, {
+          name: gm.name,
+          title: gm.title || 'High Roller Founder',
+          joinedAt: new Date(gm.joined_at).getTime() || Date.now(),
+        })
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.joinedAt - b.joinedAt)
+  }, [memberVersion, globalClubMembers])
+
+  const isMember = useMemo(() => {
+    if (!playerName) return false
+    return isClubMember(playerName) || globalClubMembers.some((gm) => gm.name.toLowerCase() === playerName.toLowerCase())
+  }, [playerName, globalClubMembers, memberVersion])
 
   // Backup tools
   const [importCode, setImportCode] = useState('')
   const [exportCode, setExportCode] = useState('')
   const [showExport, setShowExport] = useState(false)
-
-  const isMember = isClubMember(playerName)
-  const members = getClubMembers()
 
   const handlePayEntrance = () => {
     if (wallet.balance < ENTRANCE_FEE) {

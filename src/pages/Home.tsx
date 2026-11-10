@@ -1,11 +1,35 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket } from 'lucide-react'
 import { type Screen, type GameId, RotatingSeal, StatsStrip } from '../components/GameShell'
 import { DailyGift } from './Shop'
 import { sfx } from '../lib/audio'
 import { getClubMembers } from '../lib/stakeAndClub'
+import { fetchGlobalClubMembers, isSupabaseConfigured, type GlobalClubMember } from '../lib/supabase'
 
 function HallOfFamePlaque({ onOpenClub }: { onOpenClub: () => void }) {
-  const members = getClubMembers()
+  const [globalMembers, setGlobalMembers] = useState<GlobalClubMember[]>([])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const load = () => {
+      fetchGlobalClubMembers().then((res) => {
+        if (res && res.length > 0) setGlobalMembers(res)
+      })
+    }
+    load()
+    const timer = setInterval(load, 10000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const members = useMemo(() => {
+    const local = getClubMembers()
+    const map = new Map<string, { name: string }>()
+    for (const m of local) map.set(m.name.toLowerCase(), m)
+    for (const gm of globalMembers) {
+      if (!map.has(gm.name.toLowerCase())) map.set(gm.name.toLowerCase(), { name: gm.name })
+    }
+    return Array.from(map.values())
+  }, [globalMembers])
   return (
     <section className="mx-auto mb-8 max-w-6xl px-4">
       <div className="panel-noir flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#c9a227]/40 bg-gradient-to-r from-black/80 via-[#1c1505]/70 to-black/80 p-3 sm:px-5">
