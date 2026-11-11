@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket } from 'lucide-react'
+import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket, Disc, Coins } from 'lucide-react'
 import { type Screen, type GameId, RotatingSeal, StatsStrip } from '../components/GameShell'
 import { DailyGift } from './Shop'
 import { sfx } from '../lib/audio'
@@ -84,6 +84,9 @@ const GAMES: {
   isPreRelease?: boolean
 }[] = [
   { id: 'rocket', group: 'Admin Pre-Release', name: 'Rocket Crash', desc: 'Exponential multiplier ascent into deep space. Bail out before the rocket explodes!', icon: Rocket, accent: '#b45309', minBet: '25', isPreRelease: true },
+  { id: 'wheel', group: 'Admin Pre-Release', name: 'Lucky Wheel', desc: 'High-volatility casino wheel. 15 zeros, 1.5x, 2x, 5x and a legendary 10x jackpot!', icon: Disc, accent: '#7c3aed', minBet: '25', isPreRelease: true },
+  { id: 'dice', group: 'Admin Pre-Release', name: 'Lucky Dice', desc: 'High or Low dice roll with true casino odds. Predict right for a 1.95x payout!', icon: Dices, accent: '#059669', minBet: '25', isPreRelease: true },
+  { id: 'coinflip', group: 'Admin Pre-Release', name: 'Coin Flip', desc: 'Pure 50/50 high-stakes coin toss. Heads or Tails pays 1.95x total return.', icon: Coins, accent: '#d97706', minBet: '25', isPreRelease: true },
   { id: 'blackjack', group: 'Casino classics', name: 'Blackjack', desc: 'Beat the dealer to twenty-one. Blackjack pays 3 to 2.', icon: Spade, accent: '#176148', minBet: '25' },
   { id: 'roulette', group: 'Casino classics', name: 'Roulette', desc: 'Single-zero European wheel. Straight up pays 35 to 1.', icon: CircleDot, accent: '#5c0f14', minBet: '25' },
   { id: 'slots', group: 'Casino classics', name: 'Grand Slots', desc: 'Three gilded reels. Triple diamonds pay 500 to 1.', icon: Cherry, accent: '#7a1220', minBet: '25' },

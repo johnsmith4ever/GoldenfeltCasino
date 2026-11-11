@@ -307,7 +307,7 @@
 .bet-spot:hover { filter: brightness(1.35); }
 .bet-spot:active { transform: scale(0.96); }
 
-/* ============ Dice ============ */
+/* ============ Dice & Coin ============ */
 @keyframes dice-tumble {
   0% { transform: rotate(0deg) translateY(-30px) scale(1.15); }
   25% { transform: rotate(160deg) translateY(6px) scale(0.95); }
@@ -316,6 +316,15 @@
   100% { transform: rotate(450deg) translateY(0) scale(1); }
 }
 .dice-tumble-anim { animation: dice-tumble 900ms cubic-bezier(0.25, 0.6, 0.3, 1) backwards; }
+
+@keyframes coin-flip {
+  0% { transform: translateY(0) rotateY(0deg) scale(1); }
+  20% { transform: translateY(-70px) rotateY(720deg) scale(1.15); }
+  50% { transform: translateY(-110px) rotateY(1440deg) scale(1.25); }
+  80% { transform: translateY(-30px) rotateY(1980deg) scale(1.1); }
+  100% { transform: translateY(0) rotateY(2160deg) scale(1); }
+}
+.coin-flip-anim { animation: coin-flip 1300ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
 
 /* ============ Result banners ============ */
 @keyframes banner-pop {

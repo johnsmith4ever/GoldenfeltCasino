@@ -38,6 +38,7 @@ export default function Rocket() {
   const phaseRef = useRef<GamePhase>('betting')
   const wagerRef = useRef<number>(0)
   const autoCashRef = useRef<{ enabled: boolean; val: number }>({ enabled: false, val: 2.0 })
+  const multiplierRef = useRef(1.0)
 
   phaseRef.current = phase
   wagerRef.current = wager
@@ -81,14 +82,16 @@ export default function Rocket() {
 
   const handleCashOut = useCallback(() => {
     if (phaseRef.current !== 'flying' || wagerRef.current <= 0) return
-    const currentMult = multiplier
+    cancelAnimationFrame(animRef.current)
+    phaseRef.current = 'cashedOut'
+    setPhase('cashedOut')
+    const currentMult = multiplierRef.current
     const winnings = Math.floor(wagerRef.current * currentMult)
     payout(winnings, winnings - wagerRef.current)
     setWinAmount(winnings)
-    setPhase('cashedOut')
     setBurst((b) => b + 1)
     sfx.win()
-  }, [multiplier, payout])
+  }, [payout])
 
   // Launch rocket countdown & flight loop
   const handleLaunch = () => {
@@ -124,21 +127,22 @@ export default function Rocket() {
   }
 
   const startFlight = (targetCrash: number) => {
+    cancelAnimationFrame(animRef.current)
+    phaseRef.current = 'flying'
     setPhase('flying')
     setMultiplier(1.0)
+    multiplierRef.current = 1.0
     startTimeRef.current = performance.now()
     sfx.riser()
 
     const animate = (time: number) => {
       const elapsed = (time - startTimeRef.current) / 1000
-      // Multiplier formula: exponential growth
       const currentMult = Math.floor(Math.exp(0.068 * elapsed) * 100) / 100
+      multiplierRef.current = currentMult
       setMultiplier(currentMult)
 
-      // Draw canvas space flight
       drawCanvas(currentMult, elapsed, false)
 
-      // Check auto cashout
       if (
         autoCashRef.current.enabled &&
         currentMult >= autoCashRef.current.val &&
@@ -147,8 +151,8 @@ export default function Rocket() {
         handleCashOut()
       }
 
-      // Check crash condition
       if (currentMult >= targetCrash) {
+        phaseRef.current = 'crashed'
         setPhase('crashed')
         setMultiplier(targetCrash)
         drawCanvas(targetCrash, elapsed, true)
@@ -157,7 +161,7 @@ export default function Rocket() {
         return
       }
 
-      if (phaseRef.current === 'flying' || phaseRef.current === 'cashedOut') {
+      if (phaseRef.current === 'flying') {
         animRef.current = requestAnimationFrame(animate)
       }
     }
@@ -296,9 +300,14 @@ export default function Rocket() {
 
   // Handle resetting back to betting phase
   const handleNextFlight = () => {
+    cancelAnimationFrame(animRef.current)
     setPhase('betting')
+    phaseRef.current = 'betting'
     setMultiplier(1.0)
+    multiplierRef.current = 1.0
     setWinAmount(0)
+    setWager(0)
+    wagerRef.current = 0
     // Clear canvas
     const canvas = canvasRef.current
     if (canvas) {
@@ -394,12 +403,14 @@ export default function Rocket() {
 
             {phase === 'cashedOut' && (
               <div className="text-center">
-                <div className="text-[11px] font-black tracking-[0.3em] text-[#86efac]">CASHED OUT AT</div>
-                <div className="font-display text-5xl sm:text-6xl font-black text-[#86efac] drop-shadow-[0_0_25px_rgba(16,185,129,0.9)] tabular-nums">
-                  {multiplier.toFixed(2)}x
+                <div className="text-[15px] sm:text-[18px] font-black tracking-[0.25em] text-[#10b981] drop-shadow-[0_0_15px_rgba(16,185,129,0.9)] animate-pulse">
+                  CASHED OUT AT {multiplier.toFixed(2)}x
                 </div>
-                <div className="font-display text-2xl font-black text-[#fde047] mt-1">
-                  +{fmt(winAmount)} CHIPS WON!
+                <div className="font-display text-5xl sm:text-6xl font-black text-[#86efac] drop-shadow-[0_0_25px_rgba(16,185,129,0.9)] tabular-nums mt-1">
+                  +{fmt(winAmount)} CHIPS
+                </div>
+                <div className="mt-1 inline-block rounded-full border border-[#10b981]/50 bg-black/70 px-3 py-1 text-[11px] font-bold text-[#bbf7d0]">
+                  {fmt(wager)} chips × {multiplier.toFixed(2)} = {fmt(winAmount)} chips
                 </div>
               </div>
             )}

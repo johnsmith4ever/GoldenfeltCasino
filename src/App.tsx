@@ -20,6 +20,9 @@ import War from './games/War'
 import HighLow from './games/HighLow'
 import Keno from './games/Keno'
 import Rocket from './games/Rocket'
+import Wheel from './games/Wheel'
+import Dice from './games/Dice'
+import CoinFlip from './games/CoinFlip'
 
 function PlayerStart() {
   const { players, createPlayer, switchPlayer } = usePlayer()
@@ -84,6 +87,9 @@ function CasinoApp({ playerName }: { playerName: string }) {
             {screen === 'highlow' && <HighLow />}
             {screen === 'keno' && <Keno />}
             {screen === 'rocket' && <Rocket />}
+            {screen === 'wheel' && <Wheel />}
+            {screen === 'dice' && <Dice />}
+            {screen === 'coinflip' && <CoinFlip />}
           </main>
         </div>
       </ShopProvider>

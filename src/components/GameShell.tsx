@@ -7,7 +7,7 @@ import { Chip } from './Chip'
 import { Nametag } from './Nametag'
 import { ITEMS_BY_ID, msUntilClaim, useNow, useShop } from '../state/shop'
 
-export type Screen = 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard' | 'blackjack' | 'roulette' | 'slots' | 'craps' | 'poker' | 'baccarat' | 'sicbo' | 'war' | 'highlow' | 'keno' | 'rocket'
+export type Screen = 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard' | 'blackjack' | 'roulette' | 'slots' | 'craps' | 'poker' | 'baccarat' | 'sicbo' | 'war' | 'highlow' | 'keno' | 'rocket' | 'wheel' | 'dice' | 'coinflip'
 export type GameId = Exclude<Screen, 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard'>
 
 export const GAME_META: Record<GameId, { title: string; tagline: string; felt: string }> = {
@@ -22,12 +22,15 @@ export const GAME_META: Record<GameId, { title: string; tagline: string; felt: s
   highlow: { title: 'High-Low', tagline: 'Higher or lower?', felt: 'felt-noir' },
   keno: { title: 'Keno', tagline: 'Pick your numbers', felt: 'felt-red' },
   rocket: { title: 'Rocket Crash', tagline: 'Admin Pre-Release · Cash out before liftoff explodes', felt: 'felt-noir' },
+  wheel: { title: 'Lucky Wheel', tagline: 'Admin Pre-Release · Multiplier Wheel (10x, 5x, 2x, 1.5x)', felt: 'felt-noir' },
+  dice: { title: 'Lucky Dice', tagline: 'Admin Pre-Release · High or Low 1.95x', felt: 'felt-red' },
+  coinflip: { title: 'Coin Flip', tagline: 'Admin Pre-Release · Heads or Tails 1.95x', felt: 'felt-noir' },
 }
 
 /* ---------- Header ---------- */
 
 export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderboard, screen, playerName }: { onHome: () => void; onShop: () => void; onProperties: () => void; onClub: () => void; onBank: () => void; onLeaderboard: () => void; screen: Screen; playerName: string }) {
-  const { balance, refill, storageError: walletStorageError } = useChips()
+  const { balance, storageError: walletStorageError } = useChips()
   const { players, switchPlayer, startNewPlayer } = usePlayer()
   const { lastClaim, storageError: shopStorageError } = useShop()
   const now = useNow(15000)
@@ -64,14 +67,6 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
             <Chip value={1000} size={22} label="GF" />
             <span className="font-display text-[13px] font-bold text-[#f6e27a] tabular-nums">{fmt(balance)}</span>
           </div>
-          {balance < 100 && (
-            <button
-              onClick={() => { if (refill()) sfx.coin() }}
-              className="btn-crimson rounded px-2.5 py-1 text-[10px] pulse-soft shrink-0"
-            >
-              BAILOUT
-            </button>
-          )}
           <button
             onClick={() => { sfx.click(); onHome() }}
             className={`btn-ghost-gold relative flex min-h-[32px] items-center gap-1 rounded-full px-2.5 py-1 text-[10px] shrink-0 ${screen === 'lobby' ? 'border-[#f6e27a]/80 bg-[#2a2105]/60 text-[#f6e27a]' : ''}`}

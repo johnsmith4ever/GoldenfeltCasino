@@ -6,13 +6,13 @@ import { CheckCircle2 } from 'lucide-react'
 
 // Gift passwords - hardcoded
 const GIFT_CONFIGS = {
-  Kierash: { password: 'kfire2000!', reward: 250000, unlimited: false },
+  Kiarash: { password: 'kfire2000!', reward: 250000, unlimited: false },
   Nik:     { password: 'nikproject456!', reward: 250000, unlimited: false },
   ADMIN:   { password: 'johnsmith4ever!', reward: 500000, unlimited: true },
 } as const
 type GiftUser = keyof typeof GIFT_CONFIGS
 
-const GIFT_USERS: GiftUser[] = ['Kierash', 'Nik', 'ADMIN']
+const GIFT_USERS: GiftUser[] = ['Kiarash', 'Nik', 'ADMIN']
 const FREE_PACKAGE_AMOUNT = 6000
 const MIN_LOAN = 50000
 const MIN_REPAY = 50000
@@ -172,7 +172,7 @@ export default function Bank() {
   })
 
   // Gift section state
-  const [selectedGiftUser, setSelectedGiftUser] = useState<GiftUser>('Kierash')
+  const [selectedGiftUser, setSelectedGiftUser] = useState<GiftUser>('Kiarash')
   const [giftPassword, setGiftPassword] = useState('')
   const [giftError, setGiftError] = useState('')
   const [giftMessage, setGiftMessage] = useState('')
@@ -184,11 +184,49 @@ export default function Bank() {
   })
   const [, setAdminKey] = useState(0)
 
-  function isLifetimeRedeemed(user: 'Kierash' | 'Nik'): boolean {
+  const [adminGuess, setAdminGuess] = useState<'netenyahu' | 'big_jeff' | 'cius' | ''>('')
+  const [birthdayDate, setBirthdayDate] = useState('')
+  const [birthdayMsg, setBirthdayMsg] = useState('')
+  const [birthdayErr, setBirthdayErr] = useState('')
+
+  const handleBirthdayInjection = () => {
+    setBirthdayMsg('')
+    setBirthdayErr('')
+    if (!adminGuess) {
+      setBirthdayErr('Please select who you think the Admin is.')
+      return
+    }
+    if (!birthdayDate) {
+      setBirthdayErr('Please select a date.')
+      return
+    }
+    const parts = birthdayDate.split('-')
+    const year = parts.length === 3 ? parseInt(parts[0], 10) : new Date(birthdayDate).getUTCFullYear()
+    const month = parts.length === 3 ? parseInt(parts[1], 10) : new Date(birthdayDate).getUTCMonth() + 1
+    const day = parts.length === 3 ? parseInt(parts[2], 10) : new Date(birthdayDate).getUTCDate()
+
+    const claimKey = `gf-birthday-injection-${year}`
+    if (localStorage.getItem(claimKey) === 'true') {
+      setBirthdayErr(`❌ You already claimed the 250,000 chips cash injection for ${year}!`)
+      return
+    }
+
+    if (adminGuess !== 'cius' || month !== 1 || day !== 24) {
+      setBirthdayErr('❌ Access Denied: Incorrect Admin identity or secret birthday. Try another guess!')
+      return
+    }
+
+    wallet.credit(250000)
+    localStorage.setItem(claimKey, 'true')
+    setBirthdayMsg('👑 Identity & Birthday Confirmed! Cius was born on 24/1! +250,000 chips cash injection credited!')
+    sfx.coin()
+  }
+
+  function isLifetimeRedeemed(user: 'Kiarash' | 'Nik'): boolean {
     return localStorage.getItem(LIFETIME_CLAIM_PREFIX + user) === 'true'
   }
 
-  function setLifetimeRedeemed(user: 'Kierash' | 'Nik', val: boolean) {
+  function setLifetimeRedeemed(user: 'Kiarash' | 'Nik', val: boolean) {
     if (val) {
       localStorage.setItem(LIFETIME_CLAIM_PREFIX + user, 'true')
     } else {
@@ -265,20 +303,29 @@ export default function Bank() {
       setError(`You only have ${fmt(wallet.balance)} chips available.`)
       return
     }
+    const interest = Math.max(1, Math.ceil(amount * 0.01))
+    const totalRequired = amount + interest
+    if (totalRequired > wallet.balance) {
+      setError(`Repayment requires ${fmt(totalRequired)} chips (${fmt(amount)} debt + ${fmt(interest)} 1% interest fee). You only have ${fmt(wallet.balance)} chips.`)
+      return
+    }
     const paid = wallet.repay(amount)
     if (paid > 0) {
       setError('')
+      const interestPaid = Math.max(1, Math.ceil(paid * 0.01))
       const remaining = Math.max(0, (wallet.loan?.balance ?? 0) - paid)
       if (remaining === 0) {
         const nextLimit = loanLimit < 500000 ? 500000 : loanLimit < 1000000 ? 1000000 : 1000000
-        setMessage(`🎉 Debt fully paid off! Your credit limit has been upgraded to ${fmt(nextLimit)} chips!`)
+        setMessage(`🎉 Debt fully paid off! (Paid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest). Your credit limit upgraded to ${fmt(nextLimit)} chips!`)
       } else {
-        setMessage(`Repaid ${fmt(paid)} chips. Remaining debt: ${fmt(remaining)}.`)
+        setMessage(`Repaid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest (Total debited: ${fmt(paid + interestPaid)}). Remaining debt: ${fmt(remaining)}.`)
       }
       setRepayAmount('')
       sfx.coin()
     } else if (paid === -1) {
       setError(`Minimum repayment is ${fmt(MIN_REPAY)} chips.`)
+    } else if (paid === -2) {
+      setError(`Insufficient chips for debt payment plus 1% interest fee.`)
     } else {
       setError('Repayment failed. Check your balance.')
     }
@@ -310,7 +357,7 @@ export default function Bank() {
       return
     }
 
-    if (selectedGiftUser === 'Kierash' || selectedGiftUser === 'Nik') {
+    if (selectedGiftUser === 'Kiarash' || selectedGiftUser === 'Nik') {
       if (isLifetimeRedeemed(selectedGiftUser)) {
         setGiftError(`❌ ${selectedGiftUser}'s bonus has already been redeemed! This is a one-time bonus that only The Great Admin can reset.`)
         return
@@ -333,9 +380,9 @@ export default function Bank() {
     }
   }
 
-  const handleAdminResetKierash = () => {
-    setLifetimeRedeemed('Kierash', false)
-    setGiftMessage("👑 Great Admin reset Kierash's bonus! It can now be claimed again.")
+  const handleAdminResetKiarash = () => {
+    setLifetimeRedeemed('Kiarash', false)
+    setGiftMessage("👑 Great Admin reset Kiarash's bonus! It can now be claimed again.")
     setGiftError('')
     sfx.coin()
   }
@@ -406,7 +453,7 @@ export default function Bank() {
                 <span className="rounded bg-gradient-to-r from-[#f59e0b] to-[#d97706] px-2 py-0.5 text-[9px] font-black tracking-[0.2em] text-[#140b02]">
                   VAULT CREDIT
                 </span>
-                <span className="text-[10px] tracking-[0.25em] text-[#a89872]">0% INTEREST LOANS</span>
+                <span className="text-[10px] tracking-[0.25em] text-[#a89872]">1% REPAYMENT INTEREST</span>
               </div>
               <h2 className="font-display mt-1 text-2xl font-black tracking-[0.12em] text-[#fff4d1] sm:text-3xl">
                 TAKE A MONEY BAG LOAN
@@ -710,7 +757,7 @@ export default function Bank() {
                 <div className="text-[12px] font-semibold text-[#f2e6c9]">{selectedGiftUser}'s Bonus</div>
                 <div className="mt-0.5 text-[10px] text-[#8a7a4d]">
                   {fmt(GIFT_CONFIGS[selectedGiftUser].reward)} chips · {GIFT_CONFIGS[selectedGiftUser].unlimited ? 'Infinite claims allowed' : 'One-time bonus (lifetime)'}
-                  {selectedGiftUser !== 'ADMIN' && isLifetimeRedeemed(selectedGiftUser as 'Kierash' | 'Nik') && (
+                  {selectedGiftUser !== 'ADMIN' && isLifetimeRedeemed(selectedGiftUser as 'Kiarash' | 'Nik') && (
                     <span className="ml-2 font-bold text-[#ff97a3]">· REDEEMED (Locked by Great Admin)</span>
                   )}
                 </div>
@@ -739,7 +786,7 @@ export default function Bank() {
             REDEEM {selectedGiftUser.toUpperCase()}'S BONUS
           </button>
           <p className="mt-2 text-[10px] text-[#6b5f42]">
-            Kierash and Nik are one-time bonuses. The Great Admin holds infinite cash reserves.
+            Kiarash and Nik are one-time bonuses. The Great Admin holds infinite cash reserves.
           </p>
 
           {/* THE GREAT ADMIN CONSOLE */}
@@ -786,13 +833,13 @@ export default function Bank() {
                 <div className="mt-2 space-y-2">
                   <div className="flex items-center justify-between rounded-lg border border-[#f59e0b]/20 bg-black/40 p-2 text-[11px]">
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-[#f2e6c9]">Kierash (250k)</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${isLifetimeRedeemed('Kierash') ? 'bg-[#ef4444]/20 text-[#fca5a5]' : 'bg-[#10b981]/20 text-[#86efac]'}`}>
-                        {isLifetimeRedeemed('Kierash') ? 'REDEEMED' : 'AVAILABLE'}
+                      <span className="font-bold text-[#f2e6c9]">Kiarash (250k)</span>
+                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${isLifetimeRedeemed('Kiarash') ? 'bg-[#ef4444]/20 text-[#fca5a5]' : 'bg-[#10b981]/20 text-[#86efac]'}`}>
+                        {isLifetimeRedeemed('Kiarash') ? 'REDEEMED' : 'AVAILABLE'}
                       </span>
                     </div>
                     <button
-                      onClick={handleAdminResetKierash}
+                      onClick={handleAdminResetKiarash}
                       className="rounded border border-[#f59e0b]/60 bg-[#d97706]/30 px-3 py-1 text-[9px] font-black text-[#fef08a] hover:bg-[#d97706]/60 active:scale-95"
                     >
                       RESET BONUS
@@ -819,10 +866,75 @@ export default function Bank() {
           )}
         </Panel>
 
+        {/* ===================== CASH INJECTION ===================== */}
+        <Panel title="CASH INJECTION" eyebrow="SECRET ADMIN PROTOCOL" className="lg:col-span-2">
+          <p className="mb-4 text-[12px] leading-relaxed text-[#b3a06b]">
+            Those seeking a government-grade bailout must prove their clearance. Guess the Admin's true identity and secret birthday below to unlock a massive{' '}
+            <span className="text-[#f6e27a] font-semibold">250,000 chips cash injection</span>.
+          </p>
+
+          {/* Admin Identity Selector */}
+          <div className="mb-4">
+            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">STEP 1: WHO IS THE GREAT ADMIN?</label>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {[
+                { id: 'netenyahu', label: 'Netanyahu', icon: '🏛️', desc: 'The Statesman' },
+                { id: 'big_jeff', label: 'Big Jeff', icon: '🎩', desc: 'The High Roller' },
+                { id: 'cius', label: 'Cius', icon: '👑', desc: 'The House Master' },
+              ].map((adm) => (
+                <button
+                  key={adm.id}
+                  type="button"
+                  onClick={() => {
+                    setAdminGuess(adm.id as 'netenyahu' | 'big_jeff' | 'cius')
+                    setBirthdayMsg('')
+                    setBirthdayErr('')
+                    sfx.click()
+                  }}
+                  className={`flex flex-col items-center justify-center rounded-xl border p-3 transition-all ${
+                    adminGuess === adm.id
+                      ? 'border-[#f6e27a] bg-[#2a2105]/90 shadow-[0_0_15px_rgba(246,226,122,0.4)] scale-[1.02]'
+                      : 'border-[#c9a227]/30 bg-black/40 hover:border-[#c9a227]/60'
+                  }`}
+                >
+                  <span className="text-xl mb-1">{adm.icon}</span>
+                  <span className={`font-display text-[13px] font-bold ${adminGuess === adm.id ? 'text-[#f6e27a]' : 'text-[#f2e6c9]'}`}>
+                    {adm.label}
+                  </span>
+                  <span className="text-[10px] text-[#8a7a4d]">{adm.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Birthday Date Picker */}
+          <div className="mb-4">
+            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">STEP 2: GUESS ADMIN'S SECRET BIRTHDAY</label>
+            <input
+              type="date"
+              value={birthdayDate}
+              onChange={(e) => { setBirthdayDate(e.target.value); setBirthdayMsg(''); setBirthdayErr('') }}
+              className="mt-1.5 w-full min-h-[44px] rounded-lg border border-[#c9a227]/40 bg-black/40 px-3 text-[14px] text-[#f2e6c9] outline-none focus:border-[#f6e27a]"
+            />
+          </div>
+
+          {birthdayErr && <div className="mb-3 rounded-lg border border-[#d4002a]/60 bg-[#2a050a]/70 px-3.5 py-2.5 text-[11px] text-[#ff97a3]">{birthdayErr}</div>}
+          {birthdayMsg && <div className="mb-3 rounded-lg border border-[#c9a227]/40 bg-[#2a2105]/70 px-3.5 py-2.5 text-[11px] text-[#f6e27a]">{birthdayMsg}</div>}
+
+          <button
+            onClick={handleBirthdayInjection}
+            disabled={!adminGuess || !birthdayDate}
+            className="btn-gold w-full min-h-[46px] rounded-lg px-5 text-[11px] font-black tracking-wider disabled:opacity-40"
+          >
+            REQUEST 250,000 CHIPS CASH INJECTION
+          </button>
+          <p className="mt-2 text-[10px] text-[#6b5f42]">Strict clearance required. One injection per device per calendar year.</p>
+        </Panel>
+
       </div>
 
       <div className="mt-8 text-center">
-        <p className="text-[10px] tracking-[0.28em] text-[#6b5f42]">ALL TRANSACTIONS ARE FINAL · 0% INTEREST CHARGED · FOR ENTERTAINMENT ONLY</p>
+        <p className="text-[10px] tracking-[0.28em] text-[#6b5f42]">ALL TRANSACTIONS ARE FINAL · FOR ENTERTAINMENT ONLY</p>
       </div>
     </div>
   )

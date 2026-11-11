@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { usePlayer } from '../state/profile'
 import { fmt } from '../state/chips'
 import { ITEMS_BY_ID } from '../state/shop'
@@ -95,17 +96,22 @@ export default function Leaderboard() {
   const [activeSortKey, setActiveSortKey] = useState<SortKey>('balance')
   const [globalPlayers, setGlobalPlayers] = useState<GlobalPlayerRecord[]>([])
   const [isLive, setIsLive] = useState(isSupabaseConfigured())
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const loadGlobal = () => {
+    if (!isSupabaseConfigured()) return
+    setIsRefreshing(true)
+    fetchGlobalLeaderboard().then((res) => {
+      if (res && res.length > 0) {
+        setGlobalPlayers(res)
+        setIsLive(true)
+      }
+    }).finally(() => {
+      setTimeout(() => setIsRefreshing(false), 500)
+    })
+  }
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) return
-    const loadGlobal = () => {
-      fetchGlobalLeaderboard().then((res) => {
-        if (res && res.length > 0) {
-          setGlobalPlayers(res)
-          setIsLive(true)
-        }
-      })
-    }
     loadGlobal()
     const interval = setInterval(loadGlobal, 8000)
     return () => clearInterval(interval)
@@ -159,11 +165,21 @@ export default function Leaderboard() {
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6">
       <div className="mb-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a227]/30 bg-black/50 px-3 py-1 mb-2">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a227]/30 bg-black/50 px-3.5 py-1 mb-2 shadow-sm">
           <span className={`h-2 w-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
           <span className="text-[10px] font-bold tracking-widest text-[#f6e27a]">
             {isLive ? 'LIVE GLOBAL SYNC ACTIVE' : 'LOCAL DEVICE MODE'}
           </span>
+          {isLive && (
+            <button
+              onClick={loadGlobal}
+              disabled={isRefreshing}
+              className="ml-1 text-[#f6e27a] hover:text-white transition-opacity disabled:opacity-50"
+              title="Refresh Leaderboard"
+            >
+              <RefreshCw size={11} className={isRefreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
         </div>
         <p className="text-[10px] tracking-[0.4em] text-[#b3a06b]">GOLDEN FELT RANKINGS</p>
         <h1 className="font-display gold-text-bright mt-2 text-3xl font-black tracking-[0.18em] sm:text-4xl">LEADERBOARD</h1>
@@ -197,7 +213,7 @@ export default function Leaderboard() {
         {SORT_OPTIONS.find((o) => o.key === activeSortKey)?.desc}
       </div>
 
-      {players.length === 0 ? (
+      {stats.length === 0 ? (
         <div className="text-center py-16 text-[#6b5f42]">No players found. Create a player to get started.</div>
       ) : (
         <div className="space-y-3">

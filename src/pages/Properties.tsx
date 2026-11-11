@@ -6,7 +6,7 @@ import { sfx } from '../lib/audio'
 import { getStakePool, investInStakePool } from '../lib/stakeAndClub'
 import { PropertyShowcase3D } from '../components/PropertyShowcase3D'
 import { fetchGlobalStakeInvestors, isSupabaseConfigured, type GlobalStakeInvestor } from '../lib/supabase'
-import { Zap } from 'lucide-react'
+import { Zap, RefreshCw } from 'lucide-react'
 
 // Colors contrasting with red (#ef4444)
 const CONTRASTING_COLORS = [
@@ -69,15 +69,21 @@ export default function Properties() {
     return () => window.removeEventListener('stake-pool-updated', handler)
   }, [])
 
-  useEffect(() => {
+  const [isRefreshingInvestors, setIsRefreshingInvestors] = useState(false)
+
+  const loadInvestors = () => {
     if (!isSupabaseConfigured()) return
-    const loadInvestors = () => {
-      fetchGlobalStakeInvestors().then((res) => {
-        if (res && res.length > 0) {
-          setGlobalInvestors(res)
-        }
-      })
-    }
+    setIsRefreshingInvestors(true)
+    fetchGlobalStakeInvestors().then((res) => {
+      if (res && res.length > 0) {
+        setGlobalInvestors(res)
+      }
+    }).finally(() => {
+      setTimeout(() => setIsRefreshingInvestors(false), 500)
+    })
+  }
+
+  useEffect(() => {
     loadInvestors()
     const timer = setInterval(loadInvestors, 8000)
     return () => clearInterval(timer)
@@ -252,6 +258,12 @@ export default function Properties() {
         <div className="divider-gold mx-auto mt-3 w-48" />
       </div>
 
+      {/* State Property Seizure Decree */}
+      <div className="mb-6 flex items-center justify-center gap-2 rounded-xl border border-[#ef4444]/40 bg-gradient-to-r from-[#ef4444]/15 via-[#1c080b]/80 to-[#ef4444]/15 px-4 py-2.5 text-center text-[11px] font-semibold tracking-wider text-[#fca5a5] shadow-[0_0_15px_rgba(239,68,68,0.15)]">
+        <span className="text-sm">⚖️</span>
+        <span>STATE DECREE: All prior estates, property revenues, and casino capital stonks have been seized by the state. Rebuild your empire anew!</span>
+      </div>
+
       {(error || message) && (
         <div role="status" className={`mb-5 rounded-xl border px-5 py-3 text-center text-[12px] font-semibold ${error ? 'border-[#ef4444]/60 bg-[#450a0a]/80 text-[#fca5a5]' : 'border-[#10b981]/60 bg-[#064e3b]/80 text-[#a7f3d0]'}`}>
           {error || message}
@@ -392,7 +404,17 @@ export default function Properties() {
           <div className="lg:col-span-7">
             <div className="rounded-xl border border-[#c9a227]/20 bg-black/60 p-4">
               <div className="mb-3 flex items-center justify-between text-[10px] font-bold tracking-[0.25em] text-[#8a7a4d]">
-                <span>CAP TABLE &amp; COLOR KEY</span>
+                <div className="flex items-center gap-2">
+                  <span>CAP TABLE &amp; COLOR KEY</span>
+                  <button
+                    onClick={loadInvestors}
+                    disabled={isRefreshingInvestors}
+                    title="Refresh Cap Table"
+                    className="text-[#f6e27a] hover:text-white transition-opacity disabled:opacity-50"
+                  >
+                    <RefreshCw size={11} className={isRefreshingInvestors ? 'animate-spin' : ''} />
+                  </button>
+                </div>
                 <span className="text-[#ef4444]">{myStake.percent.toFixed(2)}% OWNED BY YOU</span>
               </div>
 

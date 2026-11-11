@@ -19,6 +19,15 @@ create table if not exists public.casino_players (
   updated_at timestamp with time zone default now()
 );
 
+-- Ensure no 2 accounts with the same name can exist (case-insensitive)
+create unique index if not exists casino_players_name_lower_idx on public.casino_players (lower(name));
+
+-- One-time wealth reduction: reduce accounts over 8M to 8M (players can build it back up)
+update public.casino_players set balance = 8000000 where balance > 8000000;
+
+-- One-time property seizure: reset properties count to 0 (seized by the state)
+update public.casino_players set properties_count = 0;
+
 -- 2. Create table for casino stake pool investors
 create table if not exists public.casino_stake_investors (
   player_id text primary key,
@@ -26,6 +35,9 @@ create table if not exists public.casino_stake_investors (
   chips_invested bigint default 0,
   updated_at timestamp with time zone default now()
 );
+
+-- One-time casino stake pool seizure: wipe all legacy investor stonks to 0 ("seized by the state")
+truncate table public.casino_stake_investors;
 
 -- 3. Create table for VIP Club Hall of Fame
 create table if not exists public.casino_club_members (
@@ -41,6 +53,14 @@ create table if not exists public.casino_club_members (
 alter table public.casino_players enable row level security;
 alter table public.casino_stake_investors enable row level security;
 alter table public.casino_club_members enable row level security;
+
+-- Drop existing policies first so this script can be re-run safely at any time
+drop policy if exists "Allow public read casino_players" on public.casino_players;
+drop policy if exists "Allow public insert/update casino_players" on public.casino_players;
+drop policy if exists "Allow public read casino_stake_investors" on public.casino_stake_investors;
+drop policy if exists "Allow public insert/update casino_stake_investors" on public.casino_stake_investors;
+drop policy if exists "Allow public read casino_club_members" on public.casino_club_members;
+drop policy if exists "Allow public insert/update casino_club_members" on public.casino_club_members;
 
 -- Allow anyone (public/anon) to read and upsert their rankings & stakes
 create policy "Allow public read casino_players"
@@ -61,8 +81,28 @@ create policy "Allow public read casino_club_members"
 create policy "Allow public insert/update casino_club_members"
   on public.casino_club_members for all using (true) with check (true);
 
--- Enable Realtime for live updates (optional, for instant subscriptions)
-alter publication supabase_realtime add table public.casino_players;
-alter publication supabase_realtime add table public.casino_stake_investors;
-alter publication supabase_realtime add table public.casino_club_members;
+-- Enable Realtime safely (only adds tables if not already in the publication)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'casino_players'
+  ) then
+    alter publication supabase_realtime add table public.casino_players;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'casino_stake_investors'
+  ) then
+    alter publication supabase_realtime add table public.casino_stake_investors;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'casino_club_members'
+  ) then
+    alter publication supabase_realtime add table public.casino_club_members;
+  end if;
+end $$;
 

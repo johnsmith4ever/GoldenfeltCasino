@@ -5,11 +5,15 @@ export interface StakePoolData {
   totalPool: number
 }
 
-const STAKE_KEY = 'golden-felt-stake-pool-v1'
+const STAKE_KEY = 'golden-felt-stake-pool-v2'
 const CLUB_KEY = 'golden-felt-club-members-v1'
 
 export function getStakePool(): StakePoolData {
   try {
+    // Purge legacy v1 stake pool data ("seized by the state")
+    if (localStorage.getItem('golden-felt-stake-pool-v1')) {
+      localStorage.removeItem('golden-felt-stake-pool-v1')
+    }
     const raw = localStorage.getItem(STAKE_KEY)
     let contributions: Record<string, number> = {}
     if (raw) {

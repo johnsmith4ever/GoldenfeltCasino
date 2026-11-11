@@ -41,6 +41,8 @@ export interface ChipsSave {
   doubleDownArmed: boolean; secondChanceArmed: boolean; streakShieldArmed: boolean; hintActive: boolean; freeSpinArmed: boolean; dailyWinCounted: boolean; lastLostWager: number
   lastFreePackageAt: number
   loanLimit: number
+  propertyResetVersion: number
+  wealthReducedV1?: boolean
 }
 
 const todayKey = (now = Date.now()) => new Date(now).toISOString().slice(0, 10)
@@ -53,14 +55,20 @@ const emptyDaily = (): DailyState => ({ day: todayKey(), games: [], hands: 0, wi
 const emptyWeekly = (): WeeklyState => ({ week: weekKey(), hands: 0, claimed: false })
 const emptyProperties = (): Record<PropertyId, PropertyState> => Object.fromEntries(PROPERTY_DEFS.map((p) => [p.id, { level: 0, lastCollectedAt: Date.now() }])) as Record<PropertyId, PropertyState>
 function initialState(): ChipsSave {
-  return { balance: STARTING_CHIPS, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, inventory: {} as Record<TokenId, number>, properties: emptyProperties(), loan: null, totalRepaid: 0, bankruptcyUntil: 0, lastWheelAt: 0, lastBailoutAt: 0, daily: emptyDaily(), weekly: emptyWeekly(), pendingWager: 0, lastDebtService: 0, doubleDownArmed: false, secondChanceArmed: false, streakShieldArmed: false, hintActive: false, freeSpinArmed: false, dailyWinCounted: false, lastLostWager: 0, lastFreePackageAt: 0, loanLimit: 250000 }
+  return { balance: STARTING_CHIPS, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, inventory: {} as Record<TokenId, number>, properties: emptyProperties(), loan: null, totalRepaid: 0, bankruptcyUntil: 0, lastWheelAt: 0, lastBailoutAt: 0, daily: emptyDaily(), weekly: emptyWeekly(), pendingWager: 0, lastDebtService: 0, doubleDownArmed: false, secondChanceArmed: false, streakShieldArmed: false, hintActive: false, freeSpinArmed: false, dailyWinCounted: false, lastLostWager: 0, lastFreePackageAt: 0, loanLimit: 250000, propertyResetVersion: 2, wealthReducedV1: true }
 }
 function safeObject<T>(value: unknown, fallback: T): T { return value && typeof value === 'object' ? value as T : fallback }
 function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
   const base = initialState()
+  const rawBal = Number.isFinite(raw.balance) ? Math.max(0, Number(raw.balance)) : base.balance
+  // One-time wealth reduction: reduce accounts over 8M to 8M once, but let them earn back beyond 8M afterwards!
+  const shouldReduce = !raw.wealthReducedV1 && rawBal > 8000000
+  const balance = shouldReduce ? 8000000 : rawBal
+
   let next: ChipsSave = {
     ...base, ...raw,
-    balance: Number.isFinite(raw.balance) ? Math.max(0, Number(raw.balance)) : base.balance,
+    balance,
+    wealthReducedV1: true,
     inventory: safeObject(raw.inventory, base.inventory),
     properties: { ...base.properties, ...safeObject(raw.properties, base.properties) },
     daily: { ...base.daily, ...safeObject(raw.daily, base.daily), games: Array.isArray(raw.daily?.games) ? raw.daily.games : [], claimed: Array.isArray(raw.daily?.claimed) ? raw.daily.claimed : [], tokenUseById: safeObject(raw.daily?.tokenUseById, {}) },
@@ -76,7 +84,13 @@ function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
   if (!next.lastWheelAt && legacy) { const t = Date.parse(`${legacy}T00:00:00Z`); if (Number.isFinite(t)) next.lastWheelAt = t + DAY_MS }
   if (!Number.isFinite(next.lastBailoutAt)) next.lastBailoutAt = 0
   if (next.loan) {
-    next.loan = { ...next.loan, rate: 0, interestAccrued: 0 }
+    next.loan = { ...next.loan, interestAccrued: next.loan.interestAccrued ?? 0 }
+  }
+  // One-time total property seizure (version 2) — all properties, levels, and accumulated income reset to 0
+  const CURRENT_PROPERTY_RESET_VERSION = 2
+  if ((next.propertyResetVersion ?? 0) < CURRENT_PROPERTY_RESET_VERSION) {
+    next.properties = emptyProperties()
+    next.propertyResetVersion = CURRENT_PROPERTY_RESET_VERSION
   }
   return next
 }
@@ -415,12 +429,16 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
     // Allow paying off remaining balance if it's less than the minimum
     const effectiveMin = s.loan.balance < MIN_REPAY ? s.loan.balance : MIN_REPAY
     if (roundedAmount < effectiveMin) return -1 // signal "too small"
-    const paid = Math.min(roundedAmount, s.loan.balance, s.balance)
-    if (paid <= 0) return 0
+    const principalToPay = Math.min(roundedAmount, s.loan.balance)
+    // Extra 1% interest paid on every repayment
+    const interest = Math.max(1, Math.ceil(principalToPay * 0.01))
+    const totalRequired = principalToPay + interest
+    if (s.balance < totalRequired) return -2 // signal "insufficient funds for payment + 1% interest"
+
     apply((cur) => {
       const loan = cur.loan
       if (!loan) return cur
-      const remaining = Math.max(0, loan.balance - paid)
+      const remaining = Math.max(0, loan.balance - principalToPay)
       let nextLimit = cur.loanLimit ?? 250000
       if (remaining === 0) {
         if (nextLimit < 500000) nextLimit = 500000
@@ -428,13 +446,13 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
       }
       return {
         ...cur,
-        balance: walletDebit(cur.balance, paid) ?? cur.balance,
-        loan: remaining > 0 ? { ...loan, balance: remaining } : null,
+        balance: walletDebit(cur.balance, totalRequired) ?? cur.balance,
+        loan: remaining > 0 ? { ...loan, balance: remaining, interestAccrued: (loan.interestAccrued ?? 0) + interest } : null,
         loanLimit: nextLimit,
-        totalRepaid: cur.totalRepaid + paid,
+        totalRepaid: cur.totalRepaid + principalToPay,
       }
     })
-    return paid
+    return principalToPay
   }, [apply])
   const declareBankruptcy = useCallback(() => {
     const s = stateRef.current

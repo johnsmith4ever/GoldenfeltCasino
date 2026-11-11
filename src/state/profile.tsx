@@ -11,13 +11,37 @@ function slug(name: string) { return encodeURIComponent(cleanPlayerName(name).to
 function readPlayers(): string[] {
   try {
     const v = JSON.parse(localStorage.getItem(PLAYERS_KEY) ?? '[]')
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+    const list = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+    if (list.length === 0) {
+      // Discover any existing player saves in localStorage to prevent wiping or re-prompting
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k && k.startsWith(SAVE_PREFIX) && k.endsWith(':chips')) {
+          const match = k.match(new RegExp(`^${SAVE_PREFIX}(.+):chips$`))
+          if (match && match[1] && match[1] !== 'guest') {
+            const decoded = decodeURIComponent(match[1])
+            if (!list.includes(decoded)) list.push(decoded)
+          }
+        }
+      }
+      if (list.length === 0 && localStorage.getItem('golden-felt-chips-v1')) {
+        list.push('Player')
+      }
+    }
+    return list
   } catch { return [] }
 }
 function readActive(): string | null {
   try {
     const v = localStorage.getItem(ACTIVE_KEY)
-    return v && v.trim() ? v : null
+    if (v && v.trim()) return v
+    // Only prompt to start account if there was no account on local storage to begin with
+    const existing = readPlayers()
+    if (existing.length > 0) {
+      try { localStorage.setItem(ACTIVE_KEY, existing[0]) } catch {}
+      return existing[0]
+    }
+    return null
   } catch { return null }
 }
 
