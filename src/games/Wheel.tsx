@@ -49,7 +49,7 @@ const SEGMENTS: SegmentDef[] = [
   { index: 19, mult: 0,   label: '0x',   bg: '#3f1118', text: '#fca5a5', border: '#5c1421' },
 ]
 
-const PRESET_BETS = [25, 100, 500, 1000, 5000, 25000]
+const PRESET_BETS = [25, 100, 500, 1000, 5000, 10000, 25000]
 
 export default function Wheel() {
   const { balance, bet, payout, recordLoss, markHand } = useChips()

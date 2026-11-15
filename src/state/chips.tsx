@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { playerStorageKey, usePlayer } from './profile'
 import { credit as walletCredit, debit as walletDebit, refund as walletRefund, setBalance as walletSetBalance, tokenAdd, tokenRemove } from './wallet.js'
-import { syncPlayerToSupabase } from '../lib/supabase'
+import { syncPlayerToSupabase, ensureAnonymousSession, recordGameHand, supabase } from '../lib/supabase'
 
 export const STARTING_CHIPS = 5000
 export const MIN_BET = 25
@@ -33,8 +33,22 @@ type PropertyState = { level: number; lastCollectedAt: number }
 type LoanState = { principal: number; balance: number; rate: number; lastAccruedAt: number; interestAccrued: number }
 type DailyState = { day: string; games: string[]; hands: number; wins: number; claimed: string[]; questChips: number; questTokens: number; tokenUses: number; tokenUseById: Partial<Record<TokenId, number>>; tokenEarned: number }
 type WeeklyState = { week: string; hands: number; claimed: boolean }
+export const BET_TIERS = [
+  { tier: 0, label: 'Standard', maxBet: 25000, cost: 0, desc: 'Base table limit: 25,000 chips max bet' },
+  { tier: 1, label: 'High Roller (100K)', maxBet: 100000, cost: 100, desc: 'Unlocks 100,000 chips max bet' },
+  { tier: 2, label: 'VIP Whale (1M)', maxBet: 1000000, cost: 500, desc: 'Unlocks 1,000,000 chips max bet' },
+  { tier: 3, label: 'The Sovereign (10M)', maxBet: 10000000, cost: 2000, desc: 'Unlocks 10,000,000 chips max bet' },
+] as const
+
+export function maxBetForTier(tier: number): number {
+  const found = BET_TIERS.find((t) => t.tier === tier)
+  return found ? found.maxBet : 25000
+}
+
 export interface ChipsSave {
   balance: number; totalWon: number; totalLost: number; handsPlayed: number; totalBet: number
+  tokens: number
+  betTier: number
   inventory: Record<TokenId, number>; properties: Record<PropertyId, PropertyState>; loan: LoanState | null
   totalRepaid: number; bankruptcyUntil: number; lastWheelAt: number; lastBailoutAt: number
   daily: DailyState; weekly: WeeklyState; pendingWager: number; lastDebtService: number
@@ -43,6 +57,7 @@ export interface ChipsSave {
   loanLimit: number
   propertyResetVersion: number
   wealthReducedV1?: boolean
+  propertyCompensationGranted?: boolean
 }
 
 const todayKey = (now = Date.now()) => new Date(now).toISOString().slice(0, 10)
@@ -54,8 +69,48 @@ function weekKey(now = Date.now()) {
 const emptyDaily = (): DailyState => ({ day: todayKey(), games: [], hands: 0, wins: 0, claimed: [], questChips: 0, questTokens: 0, tokenUses: 0, tokenUseById: {}, tokenEarned: 0 })
 const emptyWeekly = (): WeeklyState => ({ week: weekKey(), hands: 0, claimed: false })
 const emptyProperties = (): Record<PropertyId, PropertyState> => Object.fromEntries(PROPERTY_DEFS.map((p) => [p.id, { level: 0, lastCollectedAt: Date.now() }])) as Record<PropertyId, PropertyState>
+export const CURRENT_PROPERTY_RESET_VERSION = 10
+export const PROPERTY_SEIZURE_COMPENSATION = 75_000_000
+
+// Startup sweep:
+// 1. Instantly seize all legacy properties and 5 airports across all local storage player saves
+// 2. One-time 75M chips compensation granted to all players who had their properties seized (strictly non-recurring)
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('golden-felt') && k.endsWith(':chips')) {
+        const val = localStorage.getItem(k)
+        if (val) {
+          try {
+            const parsed = JSON.parse(val)
+            if (parsed && typeof parsed === 'object') {
+              let updated = false
+              const ver = typeof parsed.propertyResetVersion === 'number' ? parsed.propertyResetVersion : 0
+              if (ver < CURRENT_PROPERTY_RESET_VERSION) {
+                parsed.properties = emptyProperties()
+                parsed.propertyResetVersion = CURRENT_PROPERTY_RESET_VERSION
+                updated = true
+              }
+              // One-time 75M compensation for those whose properties were taken away (strictly non-recurring to prevent hyperinflation)
+              if (!parsed.propertyCompensationGranted) {
+                parsed.balance = (Number(parsed.balance) || 0) + PROPERTY_SEIZURE_COMPENSATION
+                parsed.propertyCompensationGranted = true
+                updated = true
+              }
+              if (updated) {
+                localStorage.setItem(k, JSON.stringify(parsed))
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  }
+} catch {}
+
 function initialState(): ChipsSave {
-  return { balance: STARTING_CHIPS, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, inventory: {} as Record<TokenId, number>, properties: emptyProperties(), loan: null, totalRepaid: 0, bankruptcyUntil: 0, lastWheelAt: 0, lastBailoutAt: 0, daily: emptyDaily(), weekly: emptyWeekly(), pendingWager: 0, lastDebtService: 0, doubleDownArmed: false, secondChanceArmed: false, streakShieldArmed: false, hintActive: false, freeSpinArmed: false, dailyWinCounted: false, lastLostWager: 0, lastFreePackageAt: 0, loanLimit: 250000, propertyResetVersion: 2, wealthReducedV1: true }
+  return { balance: STARTING_CHIPS, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, tokens: 0, betTier: 0, inventory: {} as Record<TokenId, number>, properties: emptyProperties(), loan: null, totalRepaid: 0, bankruptcyUntil: 0, lastWheelAt: 0, lastBailoutAt: 0, daily: emptyDaily(), weekly: emptyWeekly(), pendingWager: 0, lastDebtService: 0, doubleDownArmed: false, secondChanceArmed: false, streakShieldArmed: false, hintActive: false, freeSpinArmed: false, dailyWinCounted: false, lastLostWager: 0, lastFreePackageAt: 0, loanLimit: 250000, propertyResetVersion: CURRENT_PROPERTY_RESET_VERSION, wealthReducedV1: true, propertyCompensationGranted: true }
 }
 function safeObject<T>(value: unknown, fallback: T): T { return value && typeof value === 'object' ? value as T : fallback }
 function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
@@ -63,14 +118,32 @@ function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
   const rawBal = Number.isFinite(raw.balance) ? Math.max(0, Number(raw.balance)) : base.balance
   // One-time wealth reduction: reduce accounts over 8M to 8M once, but let them earn back beyond 8M afterwards!
   const shouldReduce = !raw.wealthReducedV1 && rawBal > 8000000
-  const balance = shouldReduce ? 8000000 : rawBal
+  let balance = shouldReduce ? 8000000 : rawBal
+
+  // One-time 75M property seizure compensation (strictly non-recurring to avoid hyperinflation)
+  const needsCompensation = !raw.propertyCompensationGranted
+  if (needsCompensation) {
+    balance += PROPERTY_SEIZURE_COMPENSATION
+  }
+
+  // One-time total property seizure (version 10) — all properties, levels (especially 5 airports), and accumulated income wiped to 0
+  const rawPropertyVersion = typeof raw.propertyResetVersion === 'number' ? raw.propertyResetVersion : 0
+  const shouldSeizeProperties = rawPropertyVersion < CURRENT_PROPERTY_RESET_VERSION
+
+  const properties = shouldSeizeProperties
+    ? emptyProperties()
+    : { ...base.properties, ...safeObject(raw.properties, base.properties) }
 
   let next: ChipsSave = {
     ...base, ...raw,
     balance,
+    tokens: Number.isFinite(raw.tokens) ? Math.max(0, Number(raw.tokens)) : 0,
+    betTier: Number.isFinite(raw.betTier) ? Math.min(3, Math.max(0, Number(raw.betTier))) : 0,
     wealthReducedV1: true,
+    propertyResetVersion: CURRENT_PROPERTY_RESET_VERSION,
+    propertyCompensationGranted: true,
+    properties,
     inventory: safeObject(raw.inventory, base.inventory),
-    properties: { ...base.properties, ...safeObject(raw.properties, base.properties) },
     daily: { ...base.daily, ...safeObject(raw.daily, base.daily), games: Array.isArray(raw.daily?.games) ? raw.daily.games : [], claimed: Array.isArray(raw.daily?.claimed) ? raw.daily.claimed : [], tokenUseById: safeObject(raw.daily?.tokenUseById, {}) },
     weekly: { ...base.weekly, ...safeObject(raw.weekly, base.weekly) },
     loanLimit: Number.isFinite(raw.loanLimit) ? Number(raw.loanLimit) : 250000,
@@ -86,9 +159,7 @@ function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
   if (next.loan) {
     next.loan = { ...next.loan, interestAccrued: next.loan.interestAccrued ?? 0 }
   }
-  // One-time total property seizure (version 2) — all properties, levels, and accumulated income reset to 0
-  const CURRENT_PROPERTY_RESET_VERSION = 2
-  if ((next.propertyResetVersion ?? 0) < CURRENT_PROPERTY_RESET_VERSION) {
+  if (shouldSeizeProperties) {
     next.properties = emptyProperties()
     next.propertyResetVersion = CURRENT_PROPERTY_RESET_VERSION
   }
@@ -97,9 +168,18 @@ function normaliseState(raw: Partial<ChipsSave>, now = Date.now()): ChipsSave {
 function load(playerName: string): ChipsSave {
   const fresh = initialState()
   try {
-    const raw = localStorage.getItem(playerStorageKey('chips', playerName))
-    if (!raw) return fresh
-    return normaliseState(JSON.parse(raw) as Partial<ChipsSave>)
+    const key = playerStorageKey('chips', playerName)
+    const rawStr = localStorage.getItem(key)
+    if (!rawStr) return fresh
+    const raw = JSON.parse(rawStr) as Partial<ChipsSave>
+    const normalized = normaliseState(raw)
+    // If properties were seized or compensation granted on this load, immediately write to localStorage!
+    if (!raw.propertyCompensationGranted || (typeof raw.propertyResetVersion === 'number' ? raw.propertyResetVersion : 0) < CURRENT_PROPERTY_RESET_VERSION) {
+      try {
+        localStorage.setItem(key, JSON.stringify(normalized))
+      } catch {}
+    }
+    return normalized
   } catch { return fresh }
 }
 function roundTo(n: number) { return Math.max(0, Math.floor(n)) }
@@ -114,10 +194,16 @@ export const WEEKLY_QUEST = { id: 'weekly-play', title: 'Play 20 hands this week
 interface ChipsState extends ChipsSave {
   storageError: string
   bankLimit: number
+  maxBet: number
+  propertyCompensationGranted?: boolean
+  setTokens: (tokens: number) => void
+  creditTokens: (amount: number) => void
+  spendTokens: (amount: number) => boolean
+  setBetTier: (tier: number) => void
   bet: (amount: number, countHand?: boolean, gameId?: string) => boolean
   markHand: (gameId?: string, stake?: number) => void
-  recordLoss: () => void
-  payout: (amount: number, profit?: number) => number
+  recordLoss: (gameId?: string) => void
+  payout: (amount: number, profit?: number, gameId?: string) => number
   refund: (amount: number) => void
   refill: () => boolean
   claimFreePackage: () => boolean
@@ -136,12 +222,13 @@ interface ChipsState extends ChipsSave {
   repay: (amount: number) => number
   declareBankruptcy: () => boolean
   propertyPending: (id: PropertyId, now?: number) => number
+  seizeAllProperties: () => void
 }
 const ChipsContext = createContext<ChipsState | null>(null)
 
 export function ChipsProvider({ children }: { children: ReactNode }) {
   const { activeName } = usePlayer()
-  const playerName = activeName ?? 'Guest'
+  const playerName = activeName ?? 'Player'
   const [state, setState] = useState(() => load(playerName))
   const [storageError, setStorageError] = useState('')
   const stateRef = useRef(state)
@@ -163,6 +250,51 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
       setStorageError('Progress could not be saved. Browser storage may be full or disabled; export a backup and free some site storage.')
     }
   }, [state, playerName])
+
+  // Fetch tokens and bet tier from Supabase on mount
+  useEffect(() => {
+    if (supabase && playerName && playerName.toLowerCase() !== 'guest') {
+      ensureAnonymousSession().then((uid) => {
+        if (uid && supabase) {
+          supabase
+            .from('players')
+            .select('tokens, bet_tier')
+            .eq('id', uid)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) {
+                apply((cur) => ({
+                  ...cur,
+                  tokens: typeof data.tokens === 'number' ? data.tokens : cur.tokens,
+                  betTier: typeof data.bet_tier === 'number' ? data.bet_tier : cur.betTier,
+                }))
+              }
+            })
+        }
+      })
+    }
+  }, [playerName, apply])
+
+  const maxBet = useMemo(() => maxBetForTier(state.betTier ?? 0), [state.betTier])
+
+  const setTokens = useCallback((tokens: number) => {
+    apply((s) => ({ ...s, tokens: Math.max(0, tokens) }))
+  }, [apply])
+
+  const creditTokens = useCallback((amount: number) => {
+    apply((s) => ({ ...s, tokens: Math.max(0, s.tokens + amount) }))
+  }, [apply])
+
+  const spendTokens = useCallback((amount: number) => {
+    if (!Number.isFinite(amount) || amount <= 0) return true
+    if (stateRef.current.tokens < amount) return false
+    apply((s) => ({ ...s, tokens: Math.max(0, s.tokens - amount) }))
+    return true
+  }, [apply])
+
+  const setBetTier = useCallback((tier: number) => {
+    apply((s) => ({ ...s, betTier: Math.min(3, Math.max(0, tier)) }))
+  }, [apply])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -202,17 +334,29 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
     weekly: { ...s.weekly, hands: s.weekly.hands + 1 },
   })), [apply])
 
-  const recordLoss = useCallback(() => apply((s) => {
-    const lost = Math.max(0, roundTo(s.pendingWager))
-    if (lost <= 0) return s
-    if (s.secondChanceArmed) {
-      return { ...s, balance: walletRefund(s.balance, Math.floor(lost * 0.5)), pendingWager: 0, secondChanceArmed: false, lastLostWager: 0 }
+  const recordLoss = useCallback((gameId?: string) => {
+    if (gameId) {
+      recordGameHand(false, gameId).catch(() => {})
     }
-    return { ...s, pendingWager: 0, lastLostWager: lost }
-  }), [apply])
+    apply((s) => {
+      const lost = Math.max(0, roundTo(s.pendingWager))
+      if (lost <= 0) return s
+      if (s.secondChanceArmed) {
+        return { ...s, balance: walletRefund(s.balance, Math.floor(lost * 0.5)), pendingWager: 0, secondChanceArmed: false, lastLostWager: 0 }
+      }
+      return { ...s, pendingWager: 0, lastLostWager: lost }
+    })
+  }, [apply])
 
-  const payout = useCallback((amount: number, profit = amount) => {
+  const payout = useCallback((amount: number, profit = amount, gameId?: string) => {
     if (!Number.isFinite(amount) || amount <= 0) return 0
+    if (gameId) {
+      recordGameHand(true, gameId).then((res) => {
+        if (res?.tokens_awarded && res.tokens_awarded > 0) {
+          apply((cur) => ({ ...cur, tokens: cur.tokens + res.tokens_awarded! }))
+        }
+      }).catch(() => {})
+    }
     let service = 0
     apply((s) => {
       const won = Math.max(0, roundTo(profit))
@@ -461,7 +605,47 @@ export function ChipsProvider({ children }: { children: ReactNode }) {
     return true
   }, [apply])
 
-  const value = useMemo<ChipsState>(() => ({ ...state, storageError, bankLimit, bet, markHand, recordLoss, payout, refund, refill, claimFreePackage, spend, credit, buyToken, useToken, useFreeSpin, consumeStreakShield, consumeHint, claimWheel, claimQuest, buyOrUpgradeProperty, collectProperty, borrow, repay, declareBankruptcy, propertyPending }), [state, storageError, bankLimit, bet, markHand, recordLoss, payout, refund, refill, claimFreePackage, spend, credit, buyToken, useToken, useFreeSpin, consumeStreakShield, consumeHint, claimWheel, claimQuest, buyOrUpgradeProperty, collectProperty, borrow, repay, declareBankruptcy, propertyPending])
+  const seizeAllProperties = useCallback(() => {
+    apply((s) => ({
+      ...s,
+      properties: emptyProperties(),
+      propertyResetVersion: CURRENT_PROPERTY_RESET_VERSION,
+    }))
+  }, [apply])
+
+  const value = useMemo<ChipsState>(() => ({
+    ...state,
+    storageError,
+    bankLimit,
+    maxBet,
+    setTokens,
+    creditTokens,
+    spendTokens,
+    setBetTier,
+    bet,
+    markHand,
+    recordLoss,
+    payout,
+    refund,
+    refill,
+    claimFreePackage,
+    spend,
+    credit,
+    buyToken,
+    useToken,
+    useFreeSpin,
+    consumeStreakShield,
+    consumeHint,
+    claimWheel,
+    claimQuest,
+    buyOrUpgradeProperty,
+    collectProperty,
+    borrow,
+    repay,
+    declareBankruptcy,
+    propertyPending,
+    seizeAllProperties,
+  }), [state, storageError, bankLimit, maxBet, setTokens, creditTokens, spendTokens, setBetTier, bet, markHand, recordLoss, payout, refund, refill, claimFreePackage, spend, credit, buyToken, useToken, useFreeSpin, consumeStreakShield, consumeHint, claimWheel, claimQuest, buyOrUpgradeProperty, collectProperty, borrow, repay, declareBankruptcy, propertyPending, seizeAllProperties])
   return <ChipsContext.Provider value={value}>{children}</ChipsContext.Provider>
 }
 

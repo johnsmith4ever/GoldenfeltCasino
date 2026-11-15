@@ -6,7 +6,7 @@ import { Coins, Sparkles, Crown } from 'lucide-react'
 
 type CoinSide = 'heads' | 'tails'
 
-const PRESET_BETS = [25, 100, 500, 1000, 5000, 25000]
+const PRESET_BETS = [25, 100, 500, 1000, 5000, 10000, 25000]
 
 function CoinGraphic({ side, flipping }: { side: CoinSide; flipping: boolean }) {
   return (

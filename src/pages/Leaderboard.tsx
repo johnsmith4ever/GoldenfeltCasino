@@ -1,273 +1,410 @@
-import { useEffect, useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
+import { Trophy, RefreshCw, Sparkles, Coins, Flame, Crown, Building2 } from 'lucide-react'
 import { usePlayer } from '../state/profile'
-import { fmt } from '../state/chips'
-import { ITEMS_BY_ID } from '../state/shop'
-import { getStakePool } from '../lib/stakeAndClub'
-import { fetchGlobalLeaderboard, isSupabaseConfigured, type GlobalPlayerRecord } from '../lib/supabase'
+import { fmt, maxBetForTier, BET_TIERS } from '../state/chips'
+import { Nametag } from '../components/Nametag'
+import {
+  fetchGlobalLeaderboard,
+  fetchCasinos,
+  supabase,
+  ensureAnonymousSession,
+  type GlobalPlayerRecord,
+  type CasinoRecord,
+} from '../lib/supabase'
+import {
+  getStakePool,
+  syncStakePoolFromSupabase,
+  type StakePoolData,
+} from '../lib/stakeAndClub'
 
-interface PlayerStats {
-  name: string
-  balance: number
-  totalWon: number
-  totalLost: number
-  handsPlayed: number
-  totalBet: number
-  netProfit: number
-  stakeAmount: number
-  stakePercent: number
-  nametagId?: string
-}
+type SortCategory = 'chips' | 'tokens' | 'ownership' | 'properties' | 'bet_tier'
 
-function getPlayerStorageKey(playerName: string, namespace: string): string {
-  const slug = encodeURIComponent(
-    playerName.trim().replace(/\s+/g, ' ').replace(/[^\p{L}\p{N} _.-]/gu, '').slice(0, 16).toLocaleLowerCase()
-  )
-  return `golden-felt-player-save-v1:${slug}:${namespace}`
-}
-
-function loadPlayerChips(playerName: string, pool: { totalPool: number; contributions: Record<string, number> }): PlayerStats {
-  const cleanName = playerName.trim()
-  const stakeKey = Object.keys(pool.contributions).find((k) => k.toLowerCase() === cleanName.toLowerCase())
-  const stakeAmount = stakeKey ? pool.contributions[stakeKey] : 0
-  const stakePercent = pool.totalPool > 0 ? (stakeAmount / pool.totalPool) * 100 : 0
-
-  let nametagId = 'tag-guest'
-  try {
-    const rawShop = localStorage.getItem(getPlayerStorageKey(playerName, 'shop'))
-    if (rawShop) {
-      const p = JSON.parse(rawShop)
-      if (p?.equipped?.tag) nametagId = p.equipped.tag
-    }
-  } catch {}
-
-  try {
-    const raw = localStorage.getItem(getPlayerStorageKey(playerName, 'chips'))
-    if (!raw) return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent, nametagId }
-    const data = JSON.parse(raw) as {
-      balance?: number
-      totalWon?: number
-      totalLost?: number
-      handsPlayed?: number
-      totalBet?: number
-    }
-    const balance = Number(data.balance) || 0
-    const totalWon = Number(data.totalWon) || 0
-    const totalLost = Number(data.totalLost) || 0
-    const handsPlayed = Number(data.handsPlayed) || 0
-    const totalBet = Number(data.totalBet) || 0
-    return {
-      name: playerName,
-      balance,
-      totalWon,
-      totalLost,
-      handsPlayed,
-      totalBet,
-      netProfit: totalWon - totalLost,
-      stakeAmount,
-      stakePercent,
-      nametagId,
-    }
-  } catch {
-    return { name: playerName, balance: 0, totalWon: 0, totalLost: 0, handsPlayed: 0, totalBet: 0, netProfit: 0, stakeAmount, stakePercent, nametagId }
-  }
-}
-
-type SortKey = 'balance' | 'totalWon' | 'totalBet' | 'stakeAmount' | 'handsPlayed' | 'netProfit'
-
-const SORT_OPTIONS: { key: SortKey; label: string; icon: string; desc: string }[] = [
-  { key: 'balance', label: 'Current Balance', icon: '💰', desc: 'Who has the most chips right now' },
-  { key: 'totalWon', label: 'Total Won', icon: '🏆', desc: 'Highest cumulative winnings ever' },
-  { key: 'totalBet', label: 'Total Bet', icon: '🎲', desc: 'Biggest gamblers by total amount wagered' },
-  { key: 'stakeAmount', label: 'Casino Stake', icon: '🏛️', desc: 'Largest shareholders and house co-owners' },
-  { key: 'handsPlayed', label: 'Hands Played', icon: '🃏', desc: 'Most experienced players' },
-  { key: 'netProfit', label: 'Net Profit', icon: '📈', desc: 'Total won minus total lost' },
-]
-
-function MedalIcon({ rank }: { rank: number }) {
-  if (rank === 1) return <span className="text-2xl">🥇</span>
-  if (rank === 2) return <span className="text-2xl">🥈</span>
-  if (rank === 3) return <span className="text-2xl">🥉</span>
-  return <span className="font-display text-lg font-bold text-[#6b5f42]">#{rank}</span>
+function MedalRank({ rank }: { rank: number }) {
+  if (rank === 1) return <span className="text-2xl drop-shadow-md">🥇</span>
+  if (rank === 2) return <span className="text-2xl drop-shadow-md">🥈</span>
+  if (rank === 3) return <span className="text-2xl drop-shadow-md">🥉</span>
+  return <span className="font-display text-lg font-bold text-[#8a7a4d]">#{rank}</span>
 }
 
 export default function Leaderboard() {
-  const { players, activeName } = usePlayer()
-  const [activeSortKey, setActiveSortKey] = useState<SortKey>('balance')
-  const [globalPlayers, setGlobalPlayers] = useState<GlobalPlayerRecord[]>([])
-  const [isLive, setIsLive] = useState(isSupabaseConfigured())
+  const { activeName } = usePlayer()
+  const [players, setPlayers] = useState<GlobalPlayerRecord[]>([])
+  const [casinos, setCasinos] = useState<CasinoRecord[]>([])
+  const [stakePool, setStakePool] = useState<StakePoolData>(() => getStakePool())
+  const [myUid, setMyUid] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<SortCategory>('chips')
+  const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const loadGlobal = () => {
-    if (!isSupabaseConfigured()) return
-    setIsRefreshing(true)
-    fetchGlobalLeaderboard().then((res) => {
-      if (res && res.length > 0) {
-        setGlobalPlayers(res)
-        setIsLive(true)
-      }
-    }).finally(() => {
-      setTimeout(() => setIsRefreshing(false), 500)
-    })
-  }
-
+  // Load stable user auth id
   useEffect(() => {
-    loadGlobal()
-    const interval = setInterval(loadGlobal, 8000)
-    return () => clearInterval(interval)
+    ensureAnonymousSession().then((uid) => {
+      if (uid) setMyUid(uid)
+    })
   }, [])
 
-  const stats = useMemo(() => {
-    const pool = getStakePool()
-    const allLocalNames = Array.from(new Set([...players, ...Object.keys(pool.contributions)]))
-    const localMap = new Map<string, PlayerStats>()
-
-    for (const name of allLocalNames) {
-      localMap.set(name.toLowerCase(), loadPlayerChips(name, pool))
-    }
-
-    // Merge global players from Supabase
-    for (const gp of globalPlayers) {
-      const key = gp.name.toLowerCase()
-      const existing = localMap.get(key)
-      if (existing) {
-        localMap.set(key, {
-          name: gp.name,
-          balance: Math.max(existing.balance, gp.balance),
-          totalWon: Math.max(existing.totalWon, gp.total_won),
-          totalLost: Math.max(existing.totalLost, gp.total_lost),
-          handsPlayed: Math.max(existing.handsPlayed, gp.hands_played),
-          totalBet: Math.max(existing.totalBet, gp.total_bet),
-          netProfit: Math.max(existing.totalWon, gp.total_won) - Math.max(existing.totalLost, gp.total_lost),
-          stakeAmount: existing.stakeAmount,
-          stakePercent: existing.stakePercent,
-          nametagId: gp.nametag_id || existing.nametagId,
-        })
-      } else {
-        localMap.set(key, {
-          name: gp.name,
-          balance: gp.balance,
-          totalWon: gp.total_won,
-          totalLost: gp.total_lost,
-          handsPlayed: gp.hands_played,
-          totalBet: gp.total_bet,
-          netProfit: gp.total_won - gp.total_lost,
-          stakeAmount: 0,
-          stakePercent: 0,
-          nametagId: gp.nametag_id || 'tag-guest',
-        })
+  // Load global leaderboard, casinos, and stake pool
+  const loadLeaderboard = useCallback(async (showSpinner = false) => {
+    if (showSpinner) setIsRefreshing(true)
+    try {
+      const [records, fetchedCasinos, syncedPool] = await Promise.all([
+        fetchGlobalLeaderboard(),
+        fetchCasinos(),
+        syncStakePoolFromSupabase(),
+      ])
+      if (records && records.length > 0) {
+        setPlayers(records)
+      }
+      if (fetchedCasinos && fetchedCasinos.length > 0) {
+        setCasinos(fetchedCasinos)
+      }
+      if (syncedPool) {
+        setStakePool(syncedPool)
+      }
+    } catch (err) {
+      console.warn('Failed to load global leaderboard:', err)
+    } finally {
+      setIsLoading(false)
+      if (showSpinner) {
+        setTimeout(() => setIsRefreshing(false), 400)
       }
     }
+  }, [])
 
-    return Array.from(localMap.values()).sort((a, b) => b[activeSortKey] - a[activeSortKey])
-  }, [players, activeSortKey, globalPlayers])
+  // Setup initial load, Realtime subscriptions and tab visibility refetch
+  useEffect(() => {
+    loadLeaderboard()
+
+    // Realtime postgres_changes subscription on players and casinos tables
+    let channel: any = null
+    if (supabase) {
+      channel = supabase
+        .channel('leaderboard-global-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'players' },
+          () => {
+            loadLeaderboard()
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'casinos' },
+          () => {
+            loadLeaderboard()
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'stake_investors' },
+          () => {
+            loadLeaderboard()
+          }
+        )
+        .subscribe()
+    }
+
+    const handleLocalStakeUpdate = () => {
+      setStakePool(getStakePool())
+    }
+    window.addEventListener('stake-pool-updated', handleLocalStakeUpdate)
+
+    // Refetch when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadLeaderboard()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      if (channel && supabase) {
+        supabase.removeChannel(channel)
+      }
+      window.removeEventListener('stake-pool-updated', handleLocalStakeUpdate)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [loadLeaderboard])
+
+  // Enriched players with property holdings and casino stake metrics
+  const enrichedPlayers = useMemo(() => {
+    const totalPool = stakePool.totalPool > 0 ? stakePool.totalPool : 1
+
+    return players.map((p) => {
+      const pName = (p.name || '').toLowerCase().trim()
+      // Match owned casinos either by owner_id or owner_name
+      const ownedCasinos = casinos.filter((c) => {
+        const matchOwnerId = c.owner_id && c.owner_id === p.id
+        const matchOwnerName = c.owner_name && c.owner_name.toLowerCase().trim() === pName
+        return Boolean(matchOwnerId || matchOwnerName)
+      })
+
+      // Match stake pool contributions case-insensitively
+      let stakedTokens = 0
+      for (const [k, v] of Object.entries(stakePool.contributions || {})) {
+        if (k.toLowerCase().trim() === pName) {
+          stakedTokens += v
+        }
+      }
+      const stakePercent = stakePool.totalPool > 0 ? Math.round((stakedTokens / totalPool) * 10000) / 100 : 0
+
+      return {
+        ...p,
+        ownedCasinos,
+        propertyCount: ownedCasinos.length,
+        stakedTokens,
+        stakePercent,
+      }
+    })
+  }, [players, casinos, stakePool])
+
+  // Sorted players list based on selected filter tab
+  const sortedPlayers = useMemo(() => {
+    return [...enrichedPlayers].sort((a, b) => {
+      if (sortKey === 'chips') {
+        return (b.chips ?? 0) - (a.chips ?? 0)
+      }
+      if (sortKey === 'tokens') {
+        return (b.tokens ?? 0) - (a.tokens ?? 0)
+      }
+      if (sortKey === 'ownership') {
+        return b.stakedTokens - a.stakedTokens || (b.tokens ?? 0) - (a.tokens ?? 0)
+      }
+      if (sortKey === 'properties') {
+        return b.propertyCount - a.propertyCount || (b.chips ?? 0) - (a.chips ?? 0)
+      }
+      if (sortKey === 'bet_tier') {
+        return (b.bet_tier ?? 0) - (a.bet_tier ?? 0) || (b.chips ?? 0) - (a.chips ?? 0)
+      }
+      return 0
+    })
+  }, [enrichedPlayers, sortKey])
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 pb-16 pt-6">
+    <div className="mx-auto w-full max-w-6xl px-4 pb-20 pt-6">
+      {/* Header */}
       <div className="mb-6 text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a227]/30 bg-black/50 px-3.5 py-1 mb-2 shadow-sm">
-          <span className={`h-2 w-2 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+        <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a227]/40 bg-black/60 px-3.5 py-1 mb-2 shadow-sm">
+          <Trophy size={13} className="text-[#f6e27a]" />
           <span className="text-[10px] font-bold tracking-widest text-[#f6e27a]">
-            {isLive ? 'LIVE GLOBAL SYNC ACTIVE' : 'LOCAL DEVICE MODE'}
+            SUPABASE GLOBAL REALTIME RANKINGS
           </span>
-          {isLive && (
-            <button
-              onClick={loadGlobal}
-              disabled={isRefreshing}
-              className="ml-1 text-[#f6e27a] hover:text-white transition-opacity disabled:opacity-50"
-              title="Refresh Leaderboard"
-            >
-              <RefreshCw size={11} className={isRefreshing ? 'animate-spin' : ''} />
-            </button>
-          )}
+          <button
+            onClick={() => loadLeaderboard(true)}
+            disabled={isRefreshing}
+            title="Refresh Leaderboard"
+            className="ml-1 text-[#f6e27a] hover:text-white transition-opacity disabled:opacity-50"
+          >
+            <RefreshCw size={11} className={isRefreshing ? 'animate-spin' : ''} />
+          </button>
         </div>
-        <p className="text-[10px] tracking-[0.4em] text-[#b3a06b]">GOLDEN FELT RANKINGS</p>
-        <h1 className="font-display gold-text-bright mt-2 text-3xl font-black tracking-[0.18em] sm:text-4xl">LEADERBOARD</h1>
-        <p className="mt-2 text-[13px] text-[#a89872]">
-          {isLive
-            ? `Global multi-device sync online · ${stats.length} active high roller${stats.length !== 1 ? 's' : ''}`
-            : `Rankings across all players on this device · ${players.length} player${players.length !== 1 ? 's' : ''}`}
+
+        <h1 className="font-display gold-text-bright text-3xl font-black tracking-[0.18em] sm:text-4xl">
+          GLOBAL LEADERBOARD
+        </h1>
+        <p className="mt-1 text-[13px] text-[#a89872]">
+          All active high rollers synchronized across the decentralized casino network
         </p>
         <div className="divider-gold mx-auto mt-3 w-48" />
       </div>
 
-      {/* Sort tabs */}
-      <div className="mb-5 flex flex-wrap gap-2 justify-center">
-        {SORT_OPTIONS.map((opt) => (
-          <button
-            key={opt.key}
-            onClick={() => setActiveSortKey(opt.key)}
-            className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-semibold transition-colors ${
-              activeSortKey === opt.key
-                ? 'border-[#f6e27a] bg-[#2a2105]/80 text-[#f6e27a]'
-                : 'border-[#c9a227]/30 bg-black/30 text-[#b3a06b] hover:border-[#c9a227]/60'
-            }`}
-          >
-            <span>{opt.icon}</span> {opt.label}
-          </button>
-        ))}
+      {/* Sort selection tabs */}
+      <div className="mb-6 flex flex-wrap justify-center gap-2">
+        <button
+          onClick={() => setSortKey('chips')}
+          className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-bold transition-all ${
+            sortKey === 'chips'
+              ? 'border-[#f6e27a] bg-[#2a2105] text-[#f6e27a] shadow-[0_0_15px_rgba(246,226,122,0.2)]'
+              : 'border-[#c9a227]/30 bg-black/40 text-[#b3a06b] hover:border-[#c9a227]/60'
+          }`}
+        >
+          <Coins size={14} /> CHIPS WEALTH
+        </button>
+
+        <button
+          onClick={() => setSortKey('tokens')}
+          className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-bold transition-all ${
+            sortKey === 'tokens'
+              ? 'border-[#38bdf8] bg-[#071829] text-[#7dd3fc] shadow-[0_0_15px_rgba(56,189,248,0.2)]'
+              : 'border-white/10 bg-black/40 text-[#a89872] hover:border-white/30'
+          }`}
+        >
+          <Sparkles size={14} className="text-[#38bdf8]" /> SCARCE TOKENS
+        </button>
+
+        <button
+          onClick={() => setSortKey('ownership')}
+          className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-bold transition-all ${
+            sortKey === 'ownership'
+              ? 'border-[#fde047] bg-[#2a2105] text-[#fde047] shadow-[0_0_15px_rgba(253,224,71,0.2)]'
+              : 'border-white/10 bg-black/40 text-[#a89872] hover:border-white/30'
+          }`}
+        >
+          <Crown size={14} className="text-[#fde047]" /> CASINO OWNERSHIP
+        </button>
+
+        <button
+          onClick={() => setSortKey('properties')}
+          className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-bold transition-all ${
+            sortKey === 'properties'
+              ? 'border-[#f6e27a] bg-[#2a2105] text-[#f6e27a] shadow-[0_0_15px_rgba(246,226,122,0.2)]'
+              : 'border-white/10 bg-black/40 text-[#a89872] hover:border-white/30'
+          }`}
+        >
+          <Building2 size={14} className="text-[#f6e27a]" /> PROPERTY HOLDINGS
+        </button>
+
+        <button
+          onClick={() => setSortKey('bet_tier')}
+          className={`flex items-center gap-1.5 rounded-full border px-4 py-2 text-[11px] font-bold transition-all ${
+            sortKey === 'bet_tier'
+              ? 'border-[#f6e27a] bg-[#2a2105] text-[#f6e27a] shadow-[0_0_15px_rgba(246,226,122,0.2)]'
+              : 'border-white/10 bg-black/40 text-[#a89872] hover:border-white/30'
+          }`}
+        >
+          <Flame size={14} /> BET TIER STATUS
+        </button>
       </div>
 
-      {/* Category description */}
-      <div className="mb-5 text-center text-[12px] text-[#8a7a4d]">
-        {SORT_OPTIONS.find((o) => o.key === activeSortKey)?.desc}
-      </div>
-
-      {stats.length === 0 ? (
-        <div className="text-center py-16 text-[#6b5f42]">No players found. Create a player to get started.</div>
+      {/* Leaderboard Roster */}
+      {isLoading ? (
+        <div className="flex min-h-[300px] flex-col items-center justify-center gap-3 text-center">
+          <RefreshCw size={28} className="animate-spin text-[#f6e27a]" />
+          <p className="font-display text-sm tracking-widest text-[#b3a06b]">FETCHING GLOBAL RECORDS...</p>
+        </div>
+      ) : sortedPlayers.length === 0 ? (
+        <div className="panel-noir rounded-2xl p-12 text-center border border-[#c9a227]/20">
+          <p className="text-[14px] text-[#a89872]">No players recorded yet. Be the first to enter the casino!</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {stats.map((s, i) => {
-            const isMe = s.name === activeName
-            const sortOpt = SORT_OPTIONS.find((o) => o.key === activeSortKey)!
-            const primaryValue = s[activeSortKey]
-            const displayValue = activeSortKey === 'netProfit'
-              ? `${primaryValue >= 0 ? '+' : ''}${fmt(primaryValue)}`
-              : activeSortKey === 'stakeAmount'
-              ? `${fmt(primaryValue)} chips`
-              : fmt(primaryValue)
-            const unit = activeSortKey === 'handsPlayed'
-              ? 'hands'
-              : activeSortKey === 'stakeAmount'
-              ? `(${s.stakePercent.toFixed(1)}% stake)`
-              : 'chips'
+          {sortedPlayers.map((player, index) => {
+            const isMe = (myUid && player.id === myUid) || (activeName && player.name.toLowerCase() === activeName.toLowerCase())
+            const rank = index + 1
+            const maxBet = maxBetForTier(player.bet_tier ?? 0)
+            const tierLabel = BET_TIERS.find(t => t.tier === (player.bet_tier ?? 0))?.label ?? 'Standard'
 
             return (
               <div
-                key={s.name}
-                className={`panel-noir rounded-xl p-4 sm:p-5 ${isMe ? 'border border-[#f6e27a]/40 shadow-[0_0_15px_rgba(246,226,122,0.1)]' : ''}`}
+                key={player.id || player.name}
+                className={`panel-noir rounded-2xl p-4 sm:p-5 transition-all ${
+                  isMe
+                    ? 'border-2 border-[#f6e27a] shadow-[0_0_20px_rgba(246,226,122,0.15)] bg-gradient-to-r from-[#2a2105]/70 via-black/80 to-[#2a2105]/70'
+                    : 'border border-[#c9a227]/20 hover:border-[#c9a227]/40'
+                }`}
               >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="flex w-10 items-center justify-center shrink-0">
-                      <MedalIcon rank={i + 1} />
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  {/* Left: Medal rank, Nametag, and Identity */}
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="flex w-10 shrink-0 items-center justify-center">
+                      <MedalRank rank={rank} />
                     </div>
-                    <div className="min-w-0">
+
+                    <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-display text-[16px] font-bold text-[#f2e6c9] truncate">{s.name}</span>
+                        <Nametag
+                          name={player.name}
+                          tagId={player.nametag || 'tag-guest'}
+                          badge={player.badge}
+                        />
                         {isMe && (
-                          <span className="rounded bg-[#c9a227]/20 border border-[#c9a227]/40 px-2 py-0.5 text-[9px] font-bold text-[#f6e27a]">
+                          <span className="rounded bg-[#c9a227]/20 border border-[#c9a227]/50 px-2 py-0.5 text-[9px] font-black text-[#f6e27a] shadow">
                             YOU
                           </span>
                         )}
-                        {ITEMS_BY_ID[s.nametagId || 'tag-guest'] && (
-                          <span className="rounded bg-[#f59e0b]/15 border border-[#f59e0b]/35 px-2 py-0.5 text-[9px] font-bold tracking-wider text-[#fde047]">
-                            {ITEMS_BY_ID[s.nametagId || 'tag-guest'].title || ITEMS_BY_ID[s.nametagId || 'tag-guest'].name}
+                        <span className="rounded bg-black/60 border border-white/10 px-2 py-0.5 text-[9px] font-bold text-gray-400">
+                          Tier {player.bet_tier ?? 0}: {tierLabel}
+                        </span>
+
+                        {/* Casino Equity Badge */}
+                        {player.stakePercent > 0 && (
+                          <span className="rounded bg-[#0284c7]/20 border border-[#38bdf8]/40 px-2 py-0.5 text-[9px] font-bold text-[#7dd3fc] flex items-center gap-1 shadow-sm">
+                            <Crown size={11} className="text-[#fde047]" />
+                            {player.stakePercent.toFixed(1)}% Casino Stake
+                          </span>
+                        )}
+
+                        {/* Property Holdings Badge */}
+                        {player.propertyCount > 0 && (
+                          <span className="rounded bg-[#c9a227]/20 border border-[#c9a227]/40 px-2 py-0.5 text-[9px] font-bold text-[#f6e27a] flex items-center gap-1 shadow-sm">
+                            <Building2 size={11} />
+                            {player.propertyCount} {player.propertyCount === 1 ? 'Venue' : 'Venues'} Owned
                           </span>
                         )}
                       </div>
-                      <div className="mt-0.5 text-[11px] text-[#8a7a4d]">
-                        Rank #{i + 1}
-                      </div>
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-[10px] tracking-[0.2em] text-[#8a7a4d] uppercase">
-                      {sortOpt.icon} {sortOpt.label}
-                    </div>
-                    <div className="font-display mt-0.5 text-2xl font-bold text-[#f6e27a] tabular-nums">
-                      {displayValue} <span className="text-[12px] font-normal text-[#b3a06b]">{unit}</span>
-                    </div>
+
+                  {/* Right: Selected Metric Display (Shows ONLY what is selected) */}
+                  <div className="flex items-center justify-between sm:justify-end border-t border-white/5 pt-3 sm:border-0 sm:pt-0">
+                    {/* 1. Chips Wealth tab: show ONLY chips */}
+                    {sortKey === 'chips' && (
+                      <div className="text-left sm:text-right">
+                        <div className="text-[9px] tracking-[0.2em] text-[#8a7a4d] uppercase font-bold">CHIPS WEALTH</div>
+                        <div className="font-display text-2xl font-bold text-[#f6e27a] tabular-nums">
+                          {fmt(player.chips ?? 0)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 2. Scarce Tokens tab: show ONLY tokens */}
+                    {sortKey === 'tokens' && (
+                      <div className="text-left sm:text-right">
+                        <div className="text-[9px] tracking-[0.2em] text-[#38bdf8] uppercase font-bold">SCARCE TOKENS</div>
+                        <div className="font-display text-2xl font-bold text-[#7dd3fc] tabular-nums flex items-center gap-1 sm:justify-end">
+                          <Sparkles size={16} className="text-[#38bdf8]" />
+                          {fmt(player.tokens ?? 0)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 3. Casino Ownership tab: show ONLY stake pool equity & staked tokens */}
+                    {sortKey === 'ownership' && (
+                      <div className="text-left sm:text-right">
+                        <div className="text-[9px] tracking-[0.2em] text-[#fde047] uppercase font-bold">CASINO EQUITY</div>
+                        <div className="font-display text-2xl font-black text-[#fde047] tabular-nums">
+                          {player.stakePercent.toFixed(1)}%
+                        </div>
+                        <div className="text-[10px] text-[#7dd3fc] tabular-nums">
+                          {fmt(player.stakedTokens)} tokens in pool
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 4. Property Holdings tab: show ONLY casino venue deeds owned */}
+                    {sortKey === 'properties' && (
+                      <div className="text-left sm:text-right">
+                        <div className="text-[9px] tracking-[0.2em] text-[#f6e27a] uppercase font-bold">PROPERTY HOLDINGS</div>
+                        <div className="font-display text-2xl font-bold text-[#f6e27a] tabular-nums">
+                          {player.propertyCount}{' '}
+                          <span className="text-xs font-normal text-[#cbb98a]">
+                            {player.propertyCount === 1 ? 'Venue' : 'Venues'} Owned
+                          </span>
+                        </div>
+                        {player.ownedCasinos.length > 0 && (
+                          <div className="flex items-center gap-1 mt-0.5 sm:justify-end">
+                            {player.ownedCasinos.map((c) => (
+                              <span key={c.id} title={`${c.name} (Slot ${c.slot_num})`} className="text-sm">
+                                {c.icon}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* 5. Bet Tier tab: show table limit and tier */}
+                    {sortKey === 'bet_tier' && (
+                      <div className="text-left sm:text-right">
+                        <div className="text-[9px] tracking-[0.2em] text-[#8a7a4d] uppercase font-bold">TABLE LIMIT</div>
+                        <div className="font-display text-xl font-bold text-[#f2e6c9] tabular-nums">
+                          {fmt(maxBet)}
+                        </div>
+                        <div className="text-[10px] text-[#cbb98a]">
+                          Tier {player.bet_tier ?? 0}: {tierLabel}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -276,10 +413,9 @@ export default function Leaderboard() {
         </div>
       )}
 
-      <div className="mt-5 text-center">
-        <p className="text-[10px] tracking-[0.28em] text-[#6b5f42]">
-          RANKINGS ARE LOCAL TO THIS DEVICE · FOR ENTERTAINMENT ONLY
-        </p>
+      {/* Footer message */}
+      <div className="mt-12 text-center text-[10px] tracking-[0.3em] text-[#6b5f42]">
+        SUPABASE CLOUD SYNC · REALTIME POSTGRESQL TRUTH · ZERO LOCAL STORAGE HYPERINFLATION
       </div>
     </div>
   )

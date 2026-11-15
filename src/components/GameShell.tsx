@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, ShoppingBag, Volume2, VolumeX, Banknote, Trophy, Dices, Building2, Crown } from 'lucide-react'
+import { ArrowLeft, ShoppingBag, Volume2, VolumeX, Banknote, Trophy, Dices, Building2, Crown, Sparkles } from 'lucide-react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { sfx, setMuted, isMuted } from '../lib/audio'
@@ -21,7 +21,7 @@ export const GAME_META: Record<GameId, { title: string; tagline: string; felt: s
   war: { title: 'Casino War', tagline: 'High card wins', felt: 'felt-green' },
   highlow: { title: 'High-Low', tagline: 'Higher or lower?', felt: 'felt-noir' },
   keno: { title: 'Keno', tagline: 'Pick your numbers', felt: 'felt-red' },
-  rocket: { title: 'Rocket Crash', tagline: 'Admin Pre-Release · Cash out before liftoff explodes', felt: 'felt-noir' },
+  rocket: { title: 'Rocket Crash (Decommissioned)', tagline: 'Game closed to prevent hyperinflation', felt: 'felt-noir' },
   wheel: { title: 'Lucky Wheel', tagline: 'Admin Pre-Release · Multiplier Wheel (10x, 5x, 2x, 1.5x)', felt: 'felt-noir' },
   dice: { title: 'Lucky Dice', tagline: 'Admin Pre-Release · High or Low 1.95x', felt: 'felt-red' },
   coinflip: { title: 'Coin Flip', tagline: 'Admin Pre-Release · Heads or Tails 1.95x', felt: 'felt-noir' },
@@ -30,8 +30,8 @@ export const GAME_META: Record<GameId, { title: string; tagline: string; felt: s
 /* ---------- Header ---------- */
 
 export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderboard, screen, playerName }: { onHome: () => void; onShop: () => void; onProperties: () => void; onClub: () => void; onBank: () => void; onLeaderboard: () => void; screen: Screen; playerName: string }) {
-  const { balance, storageError: walletStorageError } = useChips()
-  const { players, switchPlayer, startNewPlayer } = usePlayer()
+  const { balance, tokens, storageError: walletStorageError } = useChips()
+  const { players, switchPlayer } = usePlayer()
   const { lastClaim, storageError: shopStorageError } = useShop()
   const now = useNow(15000)
   const giftReady = msUntilClaim(lastClaim, now) === 0
@@ -63,9 +63,13 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {(walletStorageError || shopStorageError) && <span title={walletStorageError || shopStorageError} className="rounded border border-[#d4002a]/60 bg-[#2a050a]/70 px-1.5 py-0.5 text-[8px] font-bold text-[#ff97a3]">SAVE ISSUE</span>}
-          <div className="flex items-center gap-1.5 rounded-full border border-[#c9a227]/40 bg-black/50 py-0.5 pl-1 pr-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 rounded-full border border-[#c9a227]/40 bg-black/50 py-0.5 pl-1 pr-2.5 shrink-0" title="Chips Balance">
             <Chip value={1000} size={22} label="GF" />
             <span className="font-display text-[13px] font-bold text-[#f6e27a] tabular-nums">{fmt(balance)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-full border border-[#38bdf8]/40 bg-[#071829]/70 py-0.5 pl-2 pr-2.5 shrink-0" title="Tokens (Scarce Currency)">
+            <Sparkles size={13} className="text-[#38bdf8]" />
+            <span className="font-display text-[13px] font-bold text-[#7dd3fc] tabular-nums">{fmt(tokens)}</span>
           </div>
           <button
             onClick={() => { sfx.click(); onHome() }}
@@ -86,9 +90,10 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
           <button
             onClick={() => { sfx.click(); onProperties() }}
             className={`btn-ghost-gold relative flex min-h-[32px] items-center gap-1 rounded-full px-2.5 py-1 text-[10px] shrink-0 ${screen === 'properties' ? 'border-[#f6e27a]/80 bg-[#2a2105]/60 text-[#f6e27a]' : ''}`}
-            aria-label="Properties and Stake"
+            aria-label="Casino Stakes and Properties"
+            title="Casino Stakes, Equity Pool & Properties"
           >
-            <Building2 size={13} /><span className="hidden sm:inline">PROPERTIES</span>
+            <Building2 size={13} /><span className="hidden sm:inline">CASINO STAKES</span>
           </button>
           <button
             onClick={() => { sfx.click(); onClub() }}
@@ -112,20 +117,20 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
             <Trophy size={13} /><span className="hidden sm:inline">RANKS</span>
           </button>
           {/* Player Nametag & Identity */}
-          <div className="flex items-center gap-1 shrink-0 ml-1">
-            <Nametag compact />
+          <div className="flex items-center gap-1.5 shrink-0 ml-1">
+            <Nametag name={playerName} compact />
             {players.length > 1 && (
               <select
                 id="switch-player"
                 value={playerName}
                 onChange={(e) => { switchPlayer(e.target.value); sfx.click() }}
                 aria-label="Switch player"
-                className="max-w-[75px] min-h-[30px] rounded border border-[#c9a227]/35 bg-black/60 px-1 text-[9px] text-[#f2e6c9] outline-none shrink-0"
+                title="Switch player identity"
+                className="max-w-[90px] min-h-[30px] rounded border border-[#c9a227]/40 bg-black/80 px-1.5 text-[9.5px] font-bold text-[#f2e6c9] outline-none shrink-0 cursor-pointer hover:border-[#f6e27a]"
               >
                 {players.map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             )}
-            <button onClick={() => { sfx.click(); startNewPlayer() }} title="Add or switch to a new player" aria-label="Add new player" className="btn-ghost-gold rounded px-1.5 py-1 text-[9px] shrink-0">+</button>
           </div>
           <button
             onClick={toggleMute}

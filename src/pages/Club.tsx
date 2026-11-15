@@ -1,28 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
-import { useShop } from '../state/shop'
 import { sfx } from '../lib/audio'
 import { isClubMember, joinClub, getClubMembers } from '../lib/stakeAndClub'
 import { fetchGlobalClubMembers, isSupabaseConfigured, type GlobalClubMember } from '../lib/supabase'
-import { Nametag } from '../components/Nametag'
-import { Crown, Lock, Check } from 'lucide-react'
+import { Crown, Lock, Sparkles } from 'lucide-react'
 
 const ENTRANCE_FEE = 250000
 
-const VIP_TAGS = [
-  { id: 'tag-house', name: 'The House', title: 'THE HOUSE', desc: 'Obsidian noir with pulsing 24K gold border. The casino itself.' },
-  { id: 'tag-baron', name: 'Diamond Baron', title: 'DIAMOND BARON', desc: 'Electric diamond cyan radiance. Master of high-stakes play.' },
-  { id: 'tag-mogul', name: 'Casino Mogul', title: 'CASINO MOGUL', desc: 'Deep imperial velvet ruby with gilded filigree trim.' },
-  { id: 'tag-whale', name: 'The Great Whale', title: 'HIGH ROLLER WHALE', desc: 'Midnight ocean navy and shifting iridescent turquoise.' },
-  { id: 'tag-immortal', name: 'Immortal Gambler', title: 'IMMORTAL', desc: 'Cosmic violet glow with golden flames. Never folds.' },
-  { id: 'tag-founder', name: 'Club Founder', title: 'CLUB FOUNDER', desc: 'Royal monarch purple with shimmering 24K gold leaf.' },
-]
-
-export default function Club() {
+export default function Club({ onShop }: { onShop?: () => void }) {
   const wallet = useChips()
   const player = usePlayer()
-  const shop = useShop()
   const playerName = player.activeName ?? 'Player'
 
   const [message, setMessage] = useState('')
@@ -92,13 +80,6 @@ export default function Club() {
     setMemberVersion((v) => v + 1)
   }
 
-  const handleEquipVIPTag = (tagId: string, tagName: string) => {
-    shop.equip(tagId)
-    sfx.click()
-    setMessage(`${tagName} nametag equipped!`)
-    setError('')
-  }
-
   const exportNow = () => {
     const code = player.exportSave()
     if (!code) { setError('Could not create backup.'); return }
@@ -147,9 +128,9 @@ export default function Club() {
               <div className="mt-1 text-[11px] text-[#8a7a4d]">Permanent induction in the lobby &amp; club.</div>
             </div>
             <div className="rounded-xl border border-[#c9a227]/30 bg-black/50 p-4">
-              <div className="text-2xl mb-1">🏷️</div>
-              <div className="font-bold text-[13px] text-[#f2e6c9]">VIP Nametags</div>
-              <div className="mt-1 text-[11px] text-[#8a7a4d]">Unlock 6 exclusive high-roller titles &amp; styles.</div>
+              <div className="text-2xl mb-1">👑</div>
+              <div className="font-bold text-[13px] text-[#f2e6c9]">VIP Member Status</div>
+              <div className="mt-1 text-[11px] text-[#8a7a4d]">Lifetime Club Member badge &amp; global roster rank.</div>
             </div>
             <div className="rounded-xl border border-[#c9a227]/30 bg-black/50 p-4">
               <div className="text-2xl mb-1">🍷</div>
@@ -186,7 +167,7 @@ export default function Club() {
         <h1 className="font-display gold-text-bright mt-2 text-3xl font-black tracking-[0.18em] sm:text-4xl">
           THE HIGH ROLLERS CLUB
         </h1>
-        <p className="mt-1 text-[13px] text-[#a89872]">VIP Nametag Lounge, Hall of Fame &amp; Player Archives · {playerName}</p>
+        <p className="mt-1 text-[13px] text-[#a89872]">Hall of Fame, VIP Roster &amp; Vault Archives · {playerName}</p>
         <div className="divider-gold mx-auto mt-3 w-48" />
       </div>
 
@@ -196,61 +177,34 @@ export default function Club() {
         </div>
       )}
 
-      {/* ===================== EXCLUSIVE VIP NAMETAGS ===================== */}
-      <section className="mb-10 rounded-2xl border-2 border-[#f59e0b]/60 bg-gradient-to-br from-[#1c1505] via-[#120f04] to-black p-6 shadow-[0_0_30px_rgba(245,158,11,0.2)] sm:p-7">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-2 border-b border-[#f59e0b]/20 pb-4">
+      {/* ===================== TOKEN PRESTIGE NOTICE ===================== */}
+      <section className="mb-10 rounded-2xl border border-[#f59e0b]/40 bg-gradient-to-br from-[#1c1505] via-[#120f04] to-black p-6 shadow-[0_0_25px_rgba(245,158,11,0.15)] sm:p-7">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="rounded bg-[#f59e0b] px-2 py-0.5 text-[9px] font-black tracking-wider text-[#140b02]">
-                CLUB EXCLUSIVE
+                TOKEN ECONOMY PRESTIGE
               </span>
-              <span className="text-[10px] tracking-[0.25em] text-[#a89872]">UNLOCKED WITH MEMBERSHIP</span>
+              <span className="text-[10px] tracking-[0.25em] text-[#a89872]">EXCLUSIVE TO THE TOKEN SHOP</span>
             </div>
-            <h2 className="font-display gold-text-bright mt-1 text-2xl font-black tracking-wide">
-              VIP NAMETAG LOUNGE
+            <h2 className="font-display gold-text-bright mt-2 text-2xl font-black tracking-wide">
+              PRESTIGE NAMETAGS &amp; BADGES
             </h2>
+            <p className="mt-2 max-w-xl text-[13px] text-[#cbb98a] leading-relaxed">
+              To stop hyperinflation and ensure genuine exclusivity, all collectible nametag tiers (Diamond Baron, The House, Supreme Founder, etc.) are strictly earned with scarce tokens in the Token Shop.
+            </p>
           </div>
-          <div className="text-[11px] text-[#86efac] font-bold">✓ 6 ELITE NAMETAGS UNLOCKED</div>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {VIP_TAGS.map((tag) => {
-            const isEquipped = shop.equipped.tag === tag.id
-
-            return (
-              <div
-                key={tag.id}
-                className={`panel-noir flex flex-col justify-between rounded-xl p-4 border transition-all ${
-                  isEquipped
-                    ? 'border-[#fde047] bg-[#2a1e05]/80 shadow-[0_0_15px_rgba(245,158,11,0.3)]'
-                    : 'border-[#c9a227]/25 hover:border-[#c9a227]/50'
-                }`}
-              >
-                <div>
-                  <div className="mb-3 flex h-16 items-center justify-center rounded-lg bg-black/40">
-                    <Nametag tagId={tag.id} />
-                  </div>
-                  <h3 className="font-display font-bold text-base text-[#f2e6c9]">{tag.name}</h3>
-                  <p className="mt-1 text-[11px] text-[#8a7a4d] leading-relaxed">{tag.desc}</p>
-                </div>
-
-                <div className="mt-4">
-                  {isEquipped ? (
-                    <button disabled className="btn-ghost-gold min-h-[40px] w-full rounded text-[11px] flex items-center justify-center gap-1.5 text-[#86efac]">
-                      <Check size={14} /> ACTIVE NAMETAG
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => handleEquipVIPTag(tag.id, tag.name)}
-                      className="btn-gold min-h-[40px] w-full rounded text-[11px] font-bold"
-                    >
-                      EQUIP NAMETAG
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
+          {onShop && (
+            <button
+              onClick={() => {
+                sfx.click()
+                onShop()
+              }}
+              className="btn-gold flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[11px] font-bold tracking-wider shrink-0"
+            >
+              <Sparkles size={14} /> VISIT TOKEN SHOP →
+            </button>
+          )}
         </div>
       </section>
 

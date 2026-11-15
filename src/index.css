@@ -663,3 +663,86 @@
 @media (prefers-reduced-motion: reduce) {
   .slot-bulb, [data-phase] .slot-bulb, .slot-payline, .slot-winbox { animation: none !important; }
 }
+
+/* ================= CYPHER LOOT VAULT ANIMATIONS ================= */
+@keyframes cypher-scan {
+  0% { top: 4%; opacity: 0.2; }
+  50% { top: 92%; opacity: 0.95; }
+  100% { top: 4%; opacity: 0.2; }
+}
+
+@keyframes cypher-cube-idle {
+  0%, 100% { transform: translateY(0px) rotateY(0deg) rotateX(10deg); }
+  50% { transform: translateY(-8px) rotateY(180deg) rotateX(15deg); }
+}
+
+@keyframes cypher-cube-spin {
+  0% { transform: scale(1.08) rotateX(15deg) rotateY(0deg); }
+  100% { transform: scale(1.08) rotateX(15deg) rotateY(1440deg); }
+}
+
+@keyframes cypher-cube-vibrate {
+  0%, 100% { transform: scale(1.12) translate(0, 0) rotate(0deg); }
+  25% { transform: scale(1.12) translate(-3px, 2px) rotate(-1.5deg); }
+  50% { transform: scale(1.12) translate(3px, -2px) rotate(1.5deg); }
+  75% { transform: scale(1.12) translate(-2px, -2px) rotate(-1deg); }
+}
+
+@keyframes cypher-ring-cw {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes cypher-ring-ccw {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes cypher-shockwave-burst {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes cypher-sunburst-spin {
+  0% { transform: rotate(0deg) scale(1.1); }
+  100% { transform: rotate(360deg) scale(1.1); }
+}
+
+.cypher-scan-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #38bdf8, #ffffff, #38bdf8, transparent);
+  box-shadow: 0 0 14px #38bdf8, 0 0 28px #38bdf8;
+  animation: cypher-scan 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.cypher-cube-idle-anim {
+  animation: cypher-cube-idle 6s ease-in-out infinite;
+}
+
+.cypher-cube-spin-anim {
+  animation: cypher-cube-spin 1.8s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+}
+
+.cypher-cube-vibrate-anim {
+  animation: cypher-cube-vibrate 0.1s linear infinite;
+}
+
+.cypher-ring-fast-cw {
+  animation: cypher-ring-cw 4s linear infinite;
+}
+
+.cypher-ring-fast-ccw {
+  animation: cypher-ring-ccw 5s linear infinite;
+}
+
+.cypher-shockwave {
+  animation: cypher-shockwave-burst 0.8s ease-out forwards;
+}
+
+.cypher-sunburst {
+  animation: cypher-sunburst-spin 12s linear infinite;
+}

@@ -1,10 +1,58 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useChips } from './chips'
 import { playerStorageKey, usePlayer } from './profile'
+import { supabase, ensureAnonymousSession } from '../lib/supabase'
 
 export const DAILY_AMOUNT = 5000
 export const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000
 export const NAME_MAX = 16
+export const CURRENT_TAG_RESET_VERSION = 10
+
+// Startup sweep: automatically reset all players' decks (card backs) and table felts across localStorage
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.startsWith('golden-felt') && k.endsWith(':shop')) {
+        const val = localStorage.getItem(k)
+        if (val) {
+          try {
+            const parsed = JSON.parse(val)
+            if (parsed && typeof parsed === 'object') {
+              const ver = typeof parsed.tagResetVersion === 'number' ? parsed.tagResetVersion : 0
+              if (ver < CURRENT_TAG_RESET_VERSION) {
+                const cleanedOwned = Array.isArray(parsed.owned)
+                  ? parsed.owned.filter((id: string) => {
+                    const item = ITEMS_BY_ID[id]
+                    if (!item) return false
+                    if ((item.category === 'felt' || item.category === 'back') && (item.tokenCost ?? 0) > 0) {
+                      return false
+                    }
+                    if (item.category === 'tag' && id !== 'tag-guest') {
+                      return false
+                    }
+                    return true
+                  })
+                  : ['felt-classic', 'back-classic', 'tag-guest']
+                if (!cleanedOwned.includes('felt-classic')) cleanedOwned.push('felt-classic')
+                if (!cleanedOwned.includes('back-classic')) cleanedOwned.push('back-classic')
+                if (!cleanedOwned.includes('tag-guest')) cleanedOwned.push('tag-guest')
+                parsed.owned = cleanedOwned
+                parsed.equipped = {
+                  ...(parsed.equipped || {}),
+                  felt: 'felt-classic',
+                  back: 'back-classic',
+                }
+                parsed.tagResetVersion = CURRENT_TAG_RESET_VERSION
+                localStorage.setItem(k, JSON.stringify(parsed))
+              }
+            }
+          } catch { }
+        }
+      }
+    }
+  }
+} catch { }
 
 export type Category = 'felt' | 'back' | 'tag' | 'luxury'
 
@@ -14,6 +62,7 @@ export interface ShopItem {
   name: string
   desc: string
   price: number
+  tokenCost?: number
   /** CSS class applied when equipped. Empty string = use the game's default. */
   css: string
   /** Nametags only: the title printed under the player's name. */
@@ -30,23 +79,23 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 }
 
 export const CATALOG: ShopItem[] = [
-  // Table felts
-  { id: 'felt-classic', category: 'felt', name: 'House Felt', desc: 'Each table keeps its own classic colour.', price: 0, css: '' },
-  { id: 'felt-royal', category: 'felt', name: 'Royal Blue', desc: 'Deep sapphire baize, very high-stakes.', price: 15000, css: 'felt-royal' },
-  { id: 'felt-violet', category: 'felt', name: 'Midnight Violet', desc: 'A moody plum felt for late-night play.', price: 25000, css: 'felt-violet' },
-  { id: 'felt-teal', category: 'felt', name: 'Imperial Teal', desc: 'Cool teal with a jewel-like glow.', price: 45000, css: 'felt-teal' },
-  { id: 'felt-crimson', category: 'felt', name: 'Imperial Crimson', desc: 'Deep blood-red luxury velvet for high rollers.', price: 80000, css: 'felt-red' },
-  { id: 'felt-gold', category: 'felt', name: 'Gold Leaf', desc: 'Burnished bronze-gold. Pure indulgence.', price: 100000, css: 'felt-gold' },
-  { id: 'felt-obsidian', category: 'felt', name: 'Black Obsidian', desc: 'Pitch-black ultra-sleek noir felt.', price: 150000, css: 'felt-noir' },
+  // Table felts (Tokens only)
+  { id: 'felt-classic', category: 'felt', name: 'House Felt', desc: 'Each table keeps its own classic colour.', price: 0, tokenCost: 0, css: '' },
+  { id: 'felt-royal', category: 'felt', name: 'Royal Blue', desc: 'Deep sapphire baize, very high-stakes.', price: 0, tokenCost: 50, css: 'felt-royal' },
+  { id: 'felt-violet', category: 'felt', name: 'Midnight Violet', desc: 'A moody plum felt for late-night play.', price: 0, tokenCost: 100, css: 'felt-violet' },
+  { id: 'felt-teal', category: 'felt', name: 'Imperial Teal', desc: 'Cool teal with a jewel-like glow.', price: 0, tokenCost: 250, css: 'felt-teal' },
+  { id: 'felt-crimson', category: 'felt', name: 'Imperial Crimson', desc: 'Deep blood-red luxury velvet for high rollers.', price: 0, tokenCost: 500, css: 'felt-red' },
+  { id: 'felt-gold', category: 'felt', name: 'Gold Leaf', desc: 'Burnished bronze-gold. Pure indulgence.', price: 0, tokenCost: 1000, css: 'felt-gold' },
+  { id: 'felt-obsidian', category: 'felt', name: 'Black Obsidian', desc: 'Pitch-black ultra-sleek noir felt.', price: 0, tokenCost: 2500, css: 'felt-noir' },
 
-  // Card backs
-  { id: 'back-classic', category: 'back', name: 'Crimson Lattice', desc: 'The house standard.', price: 0, css: '' },
-  { id: 'back-sapphire', category: 'back', name: 'Sapphire', desc: 'Blue lattice with a silver edge.', price: 12000, css: 'card-back-sapphire' },
-  { id: 'back-emerald', category: 'back', name: 'Emerald', desc: 'Green lattice, gold trim.', price: 12000, css: 'card-back-emerald' },
-  { id: 'back-onyx', category: 'back', name: 'Onyx', desc: 'Black with fine gold linework.', price: 30000, css: 'card-back-onyx' },
-  { id: 'back-dragon', category: 'back', name: 'Imperial Dragon', desc: 'Gilded dragon scales in crimson and gold.', price: 50000, css: 'card-back-goldfoil' },
-  { id: 'back-goldfoil', category: 'back', name: 'Gold Foil', desc: 'Polished gold from corner to corner.', price: 75000, css: 'card-back-goldfoil' },
-  { id: 'back-hologram', category: 'back', name: 'Prismatic Hologram', desc: 'Iridescent holographic foil with shifting colours.', price: 120000, css: 'card-back-sapphire' },
+  // Card backs (Tokens only)
+  { id: 'back-classic', category: 'back', name: 'Crimson Lattice', desc: 'The house standard.', price: 0, tokenCost: 0, css: '' },
+  { id: 'back-sapphire', category: 'back', name: 'Sapphire', desc: 'Blue lattice with a silver edge.', price: 0, tokenCost: 50, css: 'card-back-sapphire' },
+  { id: 'back-emerald', category: 'back', name: 'Emerald', desc: 'Green lattice, gold trim.', price: 0, tokenCost: 100, css: 'card-back-emerald' },
+  { id: 'back-onyx', category: 'back', name: 'Onyx', desc: 'Black with fine gold linework.', price: 0, tokenCost: 250, css: 'card-back-onyx' },
+  { id: 'back-dragon', category: 'back', name: 'Imperial Dragon', desc: 'Gilded dragon scales in crimson and gold.', price: 0, tokenCost: 500, css: 'card-back-goldfoil' },
+  { id: 'back-goldfoil', category: 'back', name: 'Gold Foil', desc: 'Polished gold from corner to corner.', price: 0, tokenCost: 1000, css: 'card-back-goldfoil' },
+  { id: 'back-hologram', category: 'back', name: 'Prismatic Hologram', desc: 'Iridescent holographic foil with shifting colours.', price: 0, tokenCost: 2500, css: 'card-back-sapphire' },
 
   // Nametags - Levels 1 to 12 (Paid tier progression)
   { id: 'tag-guest', category: 'tag', name: 'Level 1: Novice', desc: 'A plain, understated bronze nameplate.', price: 0, css: 'tag-guest', title: 'NOVICE', level: 1 },
@@ -81,7 +130,7 @@ const DEFAULT_EQUIPPED: Record<EquippableCategory, string> = {
   tag: 'tag-guest',
 }
 
-const FREE_IDS = CATALOG.filter((i) => i.price === 0).map((i) => i.id)
+const FREE_IDS = CATALOG.filter((i) => i.price === 0 && (!i.tokenCost || i.tokenCost === 0)).map((i) => i.id)
 
 interface ShopState {
   lastClaim: number
@@ -90,6 +139,8 @@ interface ShopState {
   owned: string[]
   equipped: Record<EquippableCategory, string>
   name: string
+  badge?: string | null
+  tagResetVersion?: number
 }
 
 function cleanName(raw: string): string {
@@ -98,26 +149,68 @@ function cleanName(raw: string): string {
 }
 
 function load(playerName: string): ShopState {
-  const fresh: ShopState = { lastClaim: 0, lastClaimDay: '', streak: 0, owned: [...FREE_IDS], equipped: { ...DEFAULT_EQUIPPED }, name: playerName }
+  const fresh: ShopState = {
+    lastClaim: 0,
+    lastClaimDay: '',
+    streak: 0,
+    owned: [...FREE_IDS],
+    equipped: { ...DEFAULT_EQUIPPED },
+    name: playerName,
+    badge: null,
+    tagResetVersion: CURRENT_TAG_RESET_VERSION,
+  }
   try {
     const raw = localStorage.getItem(playerStorageKey('shop', playerName))
     if (!raw) return fresh
     const p = JSON.parse(raw)
+    const isOldVersion = (p.tagResetVersion ?? 0) < CURRENT_TAG_RESET_VERSION
+
     const owned = new Set<string>(FREE_IDS)
-    if (Array.isArray(p.owned)) for (const id of p.owned) if (typeof id === 'string' && ITEMS_BY_ID[id]) owned.add(id)
+    if (Array.isArray(p.owned)) {
+      for (const id of p.owned) {
+        if (typeof id === 'string' && ITEMS_BY_ID[id]) {
+          // If migrating from v2 where all felts/backs were mistakenly included in FREE_IDS:
+          if (isOldVersion && (ITEMS_BY_ID[id].tokenCost ?? 0) > 0) {
+            continue
+          }
+          if (isOldVersion && ITEMS_BY_ID[id].category === 'tag' && id !== 'tag-guest') {
+            continue
+          }
+          owned.add(id)
+        }
+      }
+    }
+
     const equipped = { ...DEFAULT_EQUIPPED }
     for (const cat of ['felt', 'back', 'tag'] as EquippableCategory[]) {
+      if (isOldVersion && (cat === 'felt' || cat === 'back')) {
+        equipped[cat] = DEFAULT_EQUIPPED[cat]
+        continue
+      }
       const id = p.equipped?.[cat]
-      if (typeof id === 'string' && ITEMS_BY_ID[id]?.category === cat && owned.has(id)) equipped[cat] = id
+      if (typeof id === 'string' && ITEMS_BY_ID[id]?.category === cat && owned.has(id)) {
+        equipped[cat] = id
+      }
     }
-    return {
+
+    const result: ShopState = {
       lastClaim: typeof p.lastClaim === 'number' ? p.lastClaim : 0,
       lastClaimDay: typeof p.lastClaimDay === 'string' ? p.lastClaimDay : (typeof p.lastClaim === 'number' && p.lastClaim ? new Date(p.lastClaim).toISOString().slice(0, 10) : ''),
       streak: Number.isFinite(p.streak) ? Math.max(0, p.streak) : 0,
       owned: [...owned],
       equipped,
-      name: typeof p.name === 'string' ? cleanName(p.name) : 'Guest',
+      name: playerName && playerName.toLowerCase() !== 'guest' ? cleanName(playerName) : (typeof p.name === 'string' && p.name.toLowerCase() !== 'guest' ? cleanName(p.name) : 'Player'),
+      badge: typeof p.badge === 'string' ? p.badge : null,
+      tagResetVersion: CURRENT_TAG_RESET_VERSION,
     }
+
+    if (isOldVersion) {
+      try {
+        localStorage.setItem(playerStorageKey('shop', playerName), JSON.stringify(result))
+      } catch { }
+    }
+
+    return result
   } catch {
     return fresh
   }
@@ -156,6 +249,8 @@ interface ShopContextValue extends ShopState {
   claim: () => boolean
   openMysteryCrate: () => { ok: boolean; message: string }
   setName: (name: string) => void
+  setBadge: (badge: string | null) => void
+  unlockItem: (id: string, category?: EquippableCategory) => void
 }
 
 const ShopContext = createContext<ShopContextValue | null>(null)
@@ -163,7 +258,7 @@ const ShopContext = createContext<ShopContextValue | null>(null)
 export function ShopProvider({ children }: { children: ReactNode }) {
   const { spend, credit, consumeStreakShield, useToken } = useChips()
   const { activeName } = usePlayer()
-  const playerName = activeName ?? 'Guest'
+  const playerName = activeName ?? 'Player'
   const [state, setState] = useState(() => load(playerName))
   const ref = useRef(state)
   const [storageError, setStorageError] = useState('')
@@ -186,6 +281,38 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     catch { setStorageError('Shop progress could not be saved. Browser storage may be full or disabled.') }
   }, [playerName])
 
+  // Sync state.name whenever playerName changes
+  useEffect(() => {
+    if (playerName && playerName.toLowerCase() !== 'guest' && ref.current.name !== playerName) {
+      update((s) => ({ ...s, name: playerName }))
+    }
+  }, [playerName, update])
+
+  // Fetch remote nametag and badge from Supabase on mount
+  useEffect(() => {
+    if (supabase && playerName && playerName.toLowerCase() !== 'guest') {
+      ensureAnonymousSession().then((uid) => {
+        if (uid && supabase) {
+          supabase
+            .from('players')
+            .select('nametag, badge')
+            .eq('id', uid)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) {
+                update((s) => ({
+                  ...s,
+                  equipped: { ...s.equipped, tag: data.nametag || s.equipped.tag },
+                  badge: data.badge !== undefined ? data.badge : s.badge,
+                  owned: data.nametag && !s.owned.includes(data.nametag) ? [...s.owned, data.nametag] : s.owned,
+                }))
+              }
+            })
+        }
+      })
+    }
+  }, [playerName, update])
+
   const openMysteryCrate = useCallback(() => {
     const used = useToken('mysteryCrate')
     if (!used.ok) return used
@@ -204,6 +331,8 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     (id) => {
       const item = ITEMS_BY_ID[id]
       if (!item) return 'unknown'
+      // Nametags, felts and backs with token costs CANNOT be bought with chips — tokens only!
+      if (item.category === 'tag' || (item.tokenCost ?? 0) > 0) return 'unknown'
       if (ref.current.owned.includes(id)) return 'owned'
       if (!spend(item.price)) return 'poor'
       update((s) => ({
@@ -220,6 +349,10 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       const item = ITEMS_BY_ID[id]
       if (!item || item.category === 'luxury') return false
+      // Cannot equip unless owned or free default
+      if (!ref.current.owned.includes(id) && !FREE_IDS.includes(id)) {
+        return false
+      }
       update((s) => ({
         ...s,
         owned: s.owned.includes(id) ? s.owned : [...s.owned, id],
@@ -229,6 +362,18 @@ export function ShopProvider({ children }: { children: ReactNode }) {
     },
     [update],
   )
+
+  const unlockItem = useCallback((id: string, category: EquippableCategory = 'tag') => {
+    update((s) => ({
+      ...s,
+      owned: s.owned.includes(id) ? s.owned : [...s.owned, id],
+      equipped: { ...s.equipped, [category]: id },
+    }))
+  }, [update])
+
+  const setBadge = useCallback((badge: string | null) => {
+    update((s) => ({ ...s, badge }))
+  }, [update])
 
   const claim = useCallback(() => {
     const now = Date.now()
@@ -247,8 +392,19 @@ export function ShopProvider({ children }: { children: ReactNode }) {
   const setName = useCallback((name: string) => update((s) => ({ ...s, name: cleanName(name) })), [update])
 
   const value = useMemo<ShopContextValue>(
-    () => ({ ...state, storageError, isOwned: (id) => state.owned.includes(id), buy, equip, claim, openMysteryCrate, setName }),
-    [state, storageError, buy, equip, claim, openMysteryCrate, setName],
+    () => ({
+      ...state,
+      storageError,
+      isOwned: (id) => state.owned.includes(id),
+      buy,
+      equip,
+      claim,
+      openMysteryCrate,
+      setName,
+      setBadge,
+      unlockItem,
+    }),
+    [state, storageError, buy, equip, claim, openMysteryCrate, setName, setBadge, unlockItem],
   )
 
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>

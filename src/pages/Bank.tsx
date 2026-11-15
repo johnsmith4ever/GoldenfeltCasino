@@ -1,18 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { sfx } from '../lib/audio'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, KeyRound } from 'lucide-react'
+import { fetchGrantRoles, redeemGrant, type GrantRole } from '../lib/supabase'
 
-// Gift passwords - hardcoded
-const GIFT_CONFIGS = {
-  Kiarash: { password: 'kfire2000!', reward: 250000, unlimited: false },
-  Nik:     { password: 'nikproject456!', reward: 250000, unlimited: false },
-  ADMIN:   { password: 'johnsmith4ever!', reward: 500000, unlimited: true },
-} as const
-type GiftUser = keyof typeof GIFT_CONFIGS
-
-const GIFT_USERS: GiftUser[] = ['Kiarash', 'Nik', 'ADMIN']
 const FREE_PACKAGE_AMOUNT = 6000
 const MIN_LOAN = 50000
 const MIN_REPAY = 50000
@@ -48,78 +40,56 @@ const BAG_CONFIGS = [
     label: '50K',
     title: 'Imperial Vault Bag',
     gradient: 'from-[#78350f] via-[#d97706] to-[#b45309]',
-    border: 'border-[#f59e0b]/60 hover:border-[#fbbf24]',
+    border: 'border-[#f59e0b]/50 hover:border-[#fde047]',
     glow: 'shadow-[0_0_20px_rgba(245,158,11,0.4)]',
     textCol: '#fde68a',
     bagColor: '#d97706',
-    accentColor: '#fbbf24',
+    accentColor: '#fde047',
     badgeBg: '#78350f',
   },
 ] as const
 
-type BagValue = (typeof BAG_CONFIGS)[number]['value']
+type BagValue = 10000 | 25000 | 50000
 
-function MoneyBagSVG({
-  value,
-  size = 64,
-  count = 0,
-}: {
-  value: BagValue
-  size?: number
-  count?: number
-}) {
-  const config = BAG_CONFIGS.find((b) => b.value === value)!
-
+function MoneyBagGraphic({ config, count = 0 }: { config: typeof BAG_CONFIGS[number]; count?: number }) {
   return (
-    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
-      <svg width={size} height={size} viewBox="0 0 100 100" className="drop-shadow-md transition-transform hover:scale-105 active:scale-95">
+    <div className="relative flex items-center justify-center py-1">
+      <svg
+        viewBox="0 0 120 120"
+        className="h-20 w-20 drop-shadow-[0_8px_16px_rgba(0,0,0,0.6)] transition-transform duration-300 group-hover:scale-105"
+      >
         <defs>
-          <linearGradient id={`bagGrad-${value}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <radialGradient id={`bagGrad-${config.value}`} cx="40%" cy="40%" r="60%">
             <stop offset="0%" stopColor={config.accentColor} />
-            <stop offset="50%" stopColor={config.bagColor} />
-            <stop offset="100%" stopColor="#09090b" />
-          </linearGradient>
-          <radialGradient id={`bellyGlow-${value}`} cx="45%" cy="55%" r="60%">
-            <stop offset="0%" stopColor={config.accentColor} stopOpacity="0.8" />
-            <stop offset="100%" stopColor={config.bagColor} stopOpacity="0.2" />
+            <stop offset="60%" stopColor={config.bagColor} />
+            <stop offset="100%" stopColor="#0a0502" />
           </radialGradient>
+          <linearGradient id={`tieGrad-${config.value}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#fde047" />
+            <stop offset="100%" stopColor="#b45309" />
+          </linearGradient>
         </defs>
 
-        {/* Shadow */}
-        <ellipse cx="50" cy="94" rx="34" ry="5" fill="rgba(0,0,0,0.45)" />
-
-        {/* Bag body */}
         <path
-          d="M 28,42 C 20,68 18,90 38,94 C 50,96 70,96 82,94 C 98,90 96,68 88,42 C 84,36 74,38 70,39 C 64,40 56,40 46,39 C 42,38 32,36 28,42 Z"
-          fill={`url(#bagGrad-${value})`}
-          stroke="#c9a227"
-          strokeWidth="1.8"
-        />
-
-        {/* Belly highlight */}
-        <ellipse cx="46" cy="68" rx="24" ry="18" fill={`url(#bellyGlow-${value})`} />
-
-        {/* Top frill / pleated neck */}
-        <path
-          d="M 33,36 C 26,22 36,15 48,17 C 54,19 64,19 72,17 C 82,15 92,22 83,36 Z"
+          d="M 45 34 C 40 20, 36 12, 43 9 C 48 6, 54 18, 60 17 C 66 18, 72 6, 77 9 C 84 12, 80 20, 75 34 Z"
           fill={config.bagColor}
-          stroke="#c9a227"
-          strokeWidth="1.6"
+          stroke="#000"
+          strokeWidth="1.5"
+        />
+        <ellipse cx="60" cy="34" rx="14" ry="4.5" fill="url(#tieGrad-10000)" stroke="#78350f" strokeWidth="1.2" />
+        <path d="M 57 37 Q 53 46 51 51 Q 54 48 57 40" fill="none" stroke="#fde047" strokeWidth="2" strokeLinecap="round" />
+        <path d="M 63 37 Q 66 45 68 50 Q 65 47 63 40" fill="none" stroke="#fde047" strokeWidth="2" strokeLinecap="round" />
+
+        <path
+          d="M 60 36 C 42 36, 22 50, 18 75 C 14 97, 28 114, 60 114 C 92 114, 106 97, 102 75 C 98 50, 78 36, 60 36 Z"
+          fill={`url(#bagGrad-${config.value})`}
+          stroke="#120a02"
+          strokeWidth="2.5"
         />
 
-        {/* Gold rope tie around neck */}
-        <ellipse cx="58" cy="38" rx="24" ry="4" fill="none" stroke="#f6e27a" strokeWidth="3" />
-        <ellipse cx="58" cy="38" rx="22" ry="3.5" fill="none" stroke="#d4af37" strokeWidth="1.5" strokeDasharray="3 2" />
-
-        {/* Hanging rope ends */}
-        <path d="M 68,39 C 72,46 75,52 72,56" fill="none" stroke="#f6e27a" strokeWidth="2.2" strokeLinecap="round" />
-        <path d="M 66,40 C 69,47 70,51 68,54" fill="none" stroke="#d4af37" strokeWidth="1.8" strokeLinecap="round" />
-
-        {/* Central emblem seal */}
-        <circle cx="58" cy="68" r="16" fill="#141416" stroke="#f6e27a" strokeWidth="1.8" />
+        <ellipse cx="58" cy="68" rx="18" ry="17" fill="#0f0c05" stroke="#f6e27a" strokeWidth="1.5" />
         <circle cx="58" cy="68" r="13.5" fill="none" stroke="#c9a227" strokeWidth="0.8" strokeDasharray="2 1.5" />
 
-        {/* Denomination text */}
         <text
           x="58"
           y="72"
@@ -134,7 +104,6 @@ function MoneyBagSVG({
         </text>
       </svg>
 
-      {/* Count badge if stacked */}
       {count > 0 && (
         <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#f6e27a] px-1 text-[10px] font-black text-[#1a1405] shadow-lg ring-2 ring-black">
           ×{count}
@@ -164,82 +133,28 @@ export default function Bank() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  // Money bags tally state: count of each bag currently selected
   const [bagCounts, setBagCounts] = useState<{ 10000: number; 25000: number; 50000: number }>({
     10000: 0,
     25000: 0,
     50000: 0,
   })
 
-  // Gift section state
-  const [selectedGiftUser, setSelectedGiftUser] = useState<GiftUser>('Kiarash')
-  const [giftPassword, setGiftPassword] = useState('')
-  const [giftError, setGiftError] = useState('')
-  const [giftMessage, setGiftMessage] = useState('')
+  // Official Starting Grants state
+  const [grantRoles, setGrantRoles] = useState<GrantRole[]>([])
+  const [selectedRole, setSelectedRole] = useState<GrantRole | null>(null)
+  const [rolePasswordInput, setRolePasswordInput] = useState('')
+  const [grantLoading, setGrantLoading] = useState(false)
+  const [grantError, setGrantError] = useState('')
+  const [grantSuccess, setGrantSuccess] = useState('')
 
-  const LIFETIME_CLAIM_PREFIX = 'gf-gift-lifetime-redeemed:'
-
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => {
-    return localStorage.getItem('gf-great-admin-unlocked') === 'true'
-  })
-  const [, setAdminKey] = useState(0)
-
-  const [adminGuess, setAdminGuess] = useState<'netenyahu' | 'big_jeff' | 'cius' | ''>('')
-  const [birthdayDate, setBirthdayDate] = useState('')
-  const [birthdayMsg, setBirthdayMsg] = useState('')
-  const [birthdayErr, setBirthdayErr] = useState('')
-
-  const handleBirthdayInjection = () => {
-    setBirthdayMsg('')
-    setBirthdayErr('')
-    if (!adminGuess) {
-      setBirthdayErr('Please select who you think the Admin is.')
-      return
-    }
-    if (!birthdayDate) {
-      setBirthdayErr('Please select a date.')
-      return
-    }
-    const parts = birthdayDate.split('-')
-    const year = parts.length === 3 ? parseInt(parts[0], 10) : new Date(birthdayDate).getUTCFullYear()
-    const month = parts.length === 3 ? parseInt(parts[1], 10) : new Date(birthdayDate).getUTCMonth() + 1
-    const day = parts.length === 3 ? parseInt(parts[2], 10) : new Date(birthdayDate).getUTCDate()
-
-    const claimKey = `gf-birthday-injection-${year}`
-    if (localStorage.getItem(claimKey) === 'true') {
-      setBirthdayErr(`❌ You already claimed the 250,000 chips cash injection for ${year}!`)
-      return
-    }
-
-    if (adminGuess !== 'cius' || month !== 1 || day !== 24) {
-      setBirthdayErr('❌ Access Denied: Incorrect Admin identity or secret birthday. Try another guess!')
-      return
-    }
-
-    wallet.credit(250000)
-    localStorage.setItem(claimKey, 'true')
-    setBirthdayMsg('👑 Identity & Birthday Confirmed! Cius was born on 24/1! +250,000 chips cash injection credited!')
-    sfx.coin()
-  }
-
-  function isLifetimeRedeemed(user: 'Kiarash' | 'Nik'): boolean {
-    return localStorage.getItem(LIFETIME_CLAIM_PREFIX + user) === 'true'
-  }
-
-  function setLifetimeRedeemed(user: 'Kiarash' | 'Nik', val: boolean) {
-    if (val) {
-      localStorage.setItem(LIFETIME_CLAIM_PREFIX + user, 'true')
-    } else {
-      localStorage.removeItem(LIFETIME_CLAIM_PREFIX + user)
-    }
-    setAdminKey((k) => k + 1)
-  }
+  useEffect(() => {
+    fetchGrantRoles().then(setGrantRoles)
+  }, [])
 
   const debt = wallet.loan?.balance ?? 0
   const loanLimit = wallet.loanLimit ?? 250000
   const availableBorrow = Math.max(0, loanLimit - debt)
 
-  // Current amount calculated from bags or manual input (fixed typo: 50000 instead of 5000)
   const bagTotal = (bagCounts[10000] || 0) * 10000 + (bagCounts[25000] || 0) * 25000 + (bagCounts[50000] || 0) * 50000
   const effectiveBorrowAmount = borrowAmount ? parseInt(borrowAmount.replace(/,/g, ''), 10) || 0 : bagTotal
 
@@ -296,11 +211,7 @@ export default function Bank() {
     }
     const effectiveMin = wallet.loan.balance < MIN_REPAY ? wallet.loan.balance : MIN_REPAY
     if (amount < effectiveMin) {
-      setError(`Minimum repayment is ${fmt(MIN_REPAY)} chips. Your remaining debt is ${fmt(wallet.loan.balance)} chips${wallet.loan.balance < MIN_REPAY ? ' — you can pay it off in full.' : '.'}`)
-      return
-    }
-    if (amount > wallet.balance) {
-      setError(`You only have ${fmt(wallet.balance)} chips available.`)
+      setError(`Minimum repayment is ${fmt(MIN_REPAY)} chips. Your remaining debt is ${fmt(wallet.loan.balance)} chips.`)
       return
     }
     const interest = Math.max(1, Math.ceil(amount * 0.01))
@@ -315,17 +226,13 @@ export default function Bank() {
       const interestPaid = Math.max(1, Math.ceil(paid * 0.01))
       const remaining = Math.max(0, (wallet.loan?.balance ?? 0) - paid)
       if (remaining === 0) {
-        const nextLimit = loanLimit < 500000 ? 500000 : loanLimit < 1000000 ? 1000000 : 1000000
-        setMessage(`🎉 Debt fully paid off! (Paid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest). Your credit limit upgraded to ${fmt(nextLimit)} chips!`)
+        const nextLimit = loanLimit < 500000 ? 500000 : 1000000
+        setMessage(`🎉 Debt fully paid off! (Paid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest). Limit upgraded to ${fmt(nextLimit)} chips!`)
       } else {
-        setMessage(`Repaid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest (Total debited: ${fmt(paid + interestPaid)}). Remaining debt: ${fmt(remaining)}.`)
+        setMessage(`Repaid ${fmt(paid)} debt + ${fmt(interestPaid)} 1% interest. Remaining debt: ${fmt(remaining)}.`)
       }
       setRepayAmount('')
       sfx.coin()
-    } else if (paid === -1) {
-      setError(`Minimum repayment is ${fmt(MIN_REPAY)} chips.`)
-    } else if (paid === -2) {
-      setError(`Insufficient chips for debt payment plus 1% interest fee.`)
     } else {
       setError('Repayment failed. Check your balance.')
     }
@@ -348,56 +255,29 @@ export default function Bank() {
     }
   }
 
-  const handleGiftRedeem = () => {
-    setGiftError('')
-    setGiftMessage('')
-    const cfg = GIFT_CONFIGS[selectedGiftUser]
-    if (giftPassword !== cfg.password) {
-      setGiftError('Incorrect password. Access denied.')
-      return
-    }
+  const handleClaimGrant = async () => {
+    if (!selectedRole || !rolePasswordInput.trim()) return
+    setGrantLoading(true)
+    setGrantError('')
+    setGrantSuccess('')
 
-    if (selectedGiftUser === 'Kiarash' || selectedGiftUser === 'Nik') {
-      if (isLifetimeRedeemed(selectedGiftUser)) {
-        setGiftError(`❌ ${selectedGiftUser}'s bonus has already been redeemed! This is a one-time bonus that only The Great Admin can reset.`)
-        return
+    try {
+      const res = await redeemGrant(selectedRole.role_name, rolePasswordInput.trim(), player.activeName || '')
+      if (res.success && res.chips) {
+        wallet.credit(res.chips)
+        sfx.coin()
+        setGrantSuccess(`👑 Starting Grant of ${fmt(res.chips)} chips credited for ${selectedRole.role_name}!`)
+        setGrantRoles((prev) => prev.map((r) => r.role_name === selectedRole.role_name ? { ...r, is_claimed: true } : r))
+        setSelectedRole(null)
+        setRolePasswordInput('')
+      } else {
+        setGrantError(res.error || 'Incorrect password. Attempt logged.')
       }
-      wallet.credit(cfg.reward)
-      setLifetimeRedeemed(selectedGiftUser, true)
-      setGiftPassword('')
-      setGiftMessage(`🎉 ${selectedGiftUser}'s bonus of ${fmt(cfg.reward)} chips has been credited! (One-time bonus claimed)`)
-      sfx.coin()
-      return
+    } catch (err: any) {
+      setGrantError(err?.message || 'Verification failed.')
+    } finally {
+      setGrantLoading(false)
     }
-
-    if (selectedGiftUser === 'ADMIN') {
-      wallet.credit(cfg.reward)
-      setIsAdminUnlocked(true)
-      localStorage.setItem('gf-great-admin-unlocked', 'true')
-      setGiftPassword('')
-      setGiftMessage(`👑 Welcome The Great Admin! +${fmt(cfg.reward)} chips credited! Infinite cash reserves & bonus controls are active.`)
-      sfx.coin()
-    }
-  }
-
-  const handleAdminResetKiarash = () => {
-    setLifetimeRedeemed('Kiarash', false)
-    setGiftMessage("👑 Great Admin reset Kiarash's bonus! It can now be claimed again.")
-    setGiftError('')
-    sfx.coin()
-  }
-
-  const handleAdminResetNik = () => {
-    setLifetimeRedeemed('Nik', false)
-    setGiftMessage("👑 Great Admin reset Nik's bonus! It can now be claimed again.")
-    setGiftError('')
-    sfx.coin()
-  }
-
-  const handleAdminInfiniteCash = (amount = 10000000) => {
-    wallet.credit(amount)
-    setMessage(`👑 Infinite Cash Injection: +${fmt(amount)} chips credited to your vault! Sitting on infinite cash reserves.`)
-    sfx.coin()
   }
 
   return (
@@ -405,7 +285,7 @@ export default function Bank() {
       <div className="mb-6 text-center">
         <p className="text-[10px] tracking-[0.4em] text-[#b3a06b]">GOLDEN FELT FINANCIAL SERVICES</p>
         <h1 className="font-display gold-text-bright mt-2 text-3xl font-black tracking-[0.18em] sm:text-4xl">THE BANK</h1>
-        <p className="mt-2 text-[13px] text-[#a89872]">Loans, emergency packages and special gifts · {player.activeName}</p>
+        <p className="mt-2 text-[13px] text-[#a89872]">Vault credit, emergency bailout and official starting grants · {player.activeName}</p>
         <div className="divider-gold mx-auto mt-3 w-48" />
       </div>
 
@@ -439,12 +319,10 @@ export default function Bank() {
 
       <div className="grid gap-6 lg:grid-cols-2">
 
-        {/* ===================== REVAMPED COLORFUL LOANS BOX ===================== */}
+        {/* ===================== LOANS BOX ===================== */}
         <section className="relative overflow-hidden rounded-2xl border-2 border-[#f59e0b]/50 bg-gradient-to-br from-[#120f04] via-[#1c1505] to-[#090803] p-5 shadow-[0_0_30px_rgba(245,158,11,0.15)] sm:p-6 lg:col-span-2">
-          {/* Ambient colorful glow orbs */}
           <div className="pointer-events-none absolute -left-12 -top-12 h-44 w-44 rounded-full bg-[#10b981]/15 blur-3xl" />
           <div className="pointer-events-none absolute right-0 top-0 h-48 w-48 rounded-full bg-[#6366f1]/15 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-10 left-1/3 h-52 w-52 rounded-full bg-[#f59e0b]/15 blur-3xl" />
 
           {/* Header */}
           <div className="relative mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-[#f59e0b]/20 pb-4">
@@ -459,8 +337,7 @@ export default function Bank() {
                 TAKE A MONEY BAG LOAN
               </h2>
             </div>
-            
-            {/* Credit Tier Badges */}
+
             <div className="flex items-center gap-1.5 rounded-full border border-[#f59e0b]/30 bg-black/50 p-1.5">
               {[
                 { tier: 'TIER 1', limit: 250000, label: '250K' },
@@ -472,9 +349,9 @@ export default function Bank() {
                 return (
                   <div
                     key={t.tier}
-                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold transition-all ${
+                    className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold ${
                       isCurrent
-                        ? 'border border-[#f59e0b] bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-[#140b02] shadow-[0_0_10px_rgba(245,158,11,0.5)]'
+                        ? 'border border-[#f59e0b] bg-gradient-to-r from-[#d97706] to-[#f59e0b] text-[#140b02]'
                         : isPassed
                         ? 'bg-[#10b981]/20 text-[#86efac] border border-[#10b981]/40'
                         : 'bg-black/40 text-[#6b5f42]'
@@ -488,7 +365,7 @@ export default function Bank() {
             </div>
           </div>
 
-          {/* Loan Limit & Debt Bar */}
+          {/* Debt Progress Bar */}
           <div className="relative mb-6 rounded-xl border border-[#c9a227]/30 bg-black/40 p-3.5">
             <div className="flex items-center justify-between text-[11px]">
               <span className="text-[#a89872]">
@@ -504,22 +381,16 @@ export default function Bank() {
                 style={{ width: `${Math.min(100, (debt / loanLimit) * 100)}%` }}
               />
             </div>
-            <p className="mt-2 text-[10px] text-[#8a7a4d]">
-              Level Up: Repay your debt completely to increase your loan limit from 250K → 500K → 1M ceiling.
-            </p>
           </div>
 
-          {/* Interactive Money Bags Tray */}
+          {/* Money Bags Tray */}
           <div className="relative mb-6">
             <div className="mb-2 flex items-center justify-between">
               <span className="text-[10px] font-bold tracking-[0.25em] text-[#f59e0b]">
                 TAP MONEY BAGS TO ADD TO LOAN
               </span>
               {bagTotal > 0 && (
-                <button
-                  onClick={clearBags}
-                  className="text-[10px] tracking-[0.15em] text-[#ff97a3] underline hover:text-white"
-                >
+                <button onClick={clearBags} className="text-[10px] tracking-[0.15em] text-[#ff97a3] underline hover:text-white">
                   CLEAR BAGS ({fmt(bagTotal)})
                 </button>
               )}
@@ -537,26 +408,15 @@ export default function Bank() {
                     onClick={() => addBag(bag.value)}
                     disabled={!canAffordBag}
                     className={`group relative flex flex-col items-center justify-between rounded-xl border p-4 text-center transition-all ${
-                      count > 0
-                        ? `${bag.border} bg-gradient-to-b ${bag.gradient} ${bag.glow} scale-[1.02]`
-                        : `border-[#c9a227]/25 bg-black/50 hover:bg-black/30 ${bag.border}`
-                    } ${!canAffordBag ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer active:scale-95'}`}
+                      count > 0 ? `${bag.border} ${bag.glow} bg-black/60 scale-[1.02]` : 'border-[#c9a227]/30 bg-black/35 hover:border-[#f59e0b]/60'
+                    } disabled:opacity-30 disabled:hover:scale-100`}
                   >
-                    <div className="text-[10px] font-bold tracking-[0.2em] text-[#a89872]">
-                      {bag.title.toUpperCase()}
+                    <div className="text-[10px] font-bold tracking-[0.2em]" style={{ color: bag.textCol }}>
+                      {bag.title}
                     </div>
-
-                    <div className="my-2.5">
-                      <MoneyBagSVG value={bag.value} size={70} count={count} />
-                    </div>
-
-                    <div className="w-full">
-                      <div className="font-display text-xl font-black tracking-wider text-[#fff4d1]">
-                        +{fmt(bag.value)}
-                      </div>
-                      <div className="mt-1 text-[9px] text-[#c9a227] opacity-80 group-hover:opacity-100">
-                        {count > 0 ? `${count} bag${count > 1 ? 's' : ''} in stack` : 'Tap to add'}
-                      </div>
+                    <MoneyBagGraphic config={bag} count={count} />
+                    <div className="font-display mt-2 text-lg font-black tracking-wider text-[#fff4d1]">
+                      +{fmt(bag.value)} chips
                     </div>
                   </button>
                 )
@@ -564,151 +424,68 @@ export default function Bank() {
             </div>
           </div>
 
-          {/* Selected Amount Bar & Action Button */}
-          <div className="relative rounded-xl border border-[#f59e0b]/40 bg-gradient-to-r from-black/80 via-[#1e1505]/80 to-black/80 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex-1">
-                <label className="text-[10px] tracking-[0.2em] text-[#a89872]">
-                  REQUESTED LOAN AMOUNT (MIN 50,000)
-                </label>
-                <div className="relative mt-1">
-                  <input
-                    type="number"
-                    value={borrowAmount}
-                    onChange={(e) => {
-                      setBorrowAmount(e.target.value)
-                      setBagCounts({ 10000: 0, 25000: 0, 50000: 0 })
-                    }}
-                    placeholder={`Enter amount or tap bags (Min ${fmt(MIN_LOAN)})`}
-                    min={MIN_LOAN}
-                    max={availableBorrow}
-                    className="w-full min-h-[46px] rounded-lg border border-[#f59e0b]/50 bg-black/60 px-3.5 font-display text-[17px] font-bold text-[#fef08a] outline-none placeholder:text-[#524528] focus:border-[#fde047]"
-                  />
-                  {effectiveBorrowAmount > 0 && (
-                    <span className="absolute right-3 top-3 text-[11px] font-bold text-[#a89872]">
-                      chips
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="sm:w-60">
-                <button
-                  type="button"
-                  onClick={handleBorrow}
-                  disabled={effectiveBorrowAmount < MIN_LOAN || effectiveBorrowAmount > availableBorrow}
-                  className="w-full min-h-[46px] rounded-lg bg-gradient-to-r from-[#d97706] via-[#f59e0b] to-[#eab308] px-5 text-[12px] font-black tracking-[0.18em] text-[#1a0f02] shadow-[0_0_20px_rgba(245,158,11,0.5)] transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  BORROW {effectiveBorrowAmount >= MIN_LOAN ? fmt(effectiveBorrowAmount) : ''}
-                </button>
+          {/* Action Row */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-t border-[#f59e0b]/20 pt-4">
+            <div>
+              <div className="text-[10px] tracking-[0.2em] text-[#a89872]">SELECTED BORROW AMOUNT</div>
+              <div className="font-display text-2xl font-bold text-[#fde047]">
+                {fmt(effectiveBorrowAmount)} <span className="text-sm font-normal text-[#a89872]">chips</span>
               </div>
             </div>
-
-            {/* Quick Presets */}
-            <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-[#f59e0b]/20 pt-3">
-              <span className="text-[9px] tracking-[0.2em] text-[#8a7a4d]">QUICK PACKS:</span>
-              {[50000, 100000, 150000, 200000, 250000].filter(v => v <= availableBorrow).map(v => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => {
-                    setBorrowAmount(String(v))
-                    setBagCounts({ 10000: 0, 25000: 0, 50000: 0 })
-                  }}
-                  className="rounded-full border border-[#f59e0b]/40 bg-black/40 px-3 py-1 text-[10px] font-bold text-[#fde047] transition-colors hover:border-[#fde047] hover:bg-[#2a2105]"
-                >
-                  {fmt(v)}
-                </button>
-              ))}
-              {availableBorrow > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBorrowAmount(String(availableBorrow))
-                    setBagCounts({ 10000: 0, 25000: 0, 50000: 0 })
-                  }}
-                  className="rounded-full border border-[#67e8f9]/50 bg-[#083344]/40 px-3 py-1 text-[10px] font-bold text-[#67e8f9] transition-colors hover:border-[#67e8f9]"
-                >
-                  MAX ({fmt(availableBorrow)})
-                </button>
-              )}
-            </div>
+            <button
+              onClick={handleBorrow}
+              disabled={effectiveBorrowAmount < MIN_LOAN || effectiveBorrowAmount > availableBorrow}
+              className="btn-gold min-h-[46px] rounded px-8 text-[12px] font-black tracking-wider disabled:opacity-40"
+            >
+              TAKE LOAN OF {fmt(effectiveBorrowAmount)}
+            </button>
           </div>
         </section>
 
-        {/* ===================== REPAY LOAN SECTION ===================== */}
-        {wallet.loan && (
-          <section className="relative overflow-hidden rounded-2xl border border-[#ef4444]/40 bg-gradient-to-br from-[#1a0508] via-[#140407] to-black p-5 shadow-lg">
-            <div className="mb-4">
-              <p className="text-[9px] tracking-[0.35em] text-[#f87171]">PAY DOWN YOUR DEBT</p>
-              <h2 className="font-display text-xl font-bold tracking-[0.15em] text-[#fee2e2]">REPAY LOAN</h2>
-            </div>
-
-            <div className="rounded-xl border border-[#ef4444]/30 bg-black/50 p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] tracking-[0.2em] text-[#a89872]">CURRENT OUTSTANDING DEBT</div>
-                  <div className="font-display mt-0.5 text-2xl font-black text-[#ff97a3]">{fmt(debt)}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-[10px] tracking-[0.2em] text-[#a89872]">MINIMUM PAYMENT</div>
-                  <div className="font-display mt-0.5 text-lg font-bold text-[#fde047]">
-                    {debt < MIN_REPAY ? `${fmt(debt)} (Pay in full)` : fmt(MIN_REPAY)}
-                  </div>
+        {/* ===================== REPAY DEBT ===================== */}
+        <Panel title="REPAY VAULT DEBT" eyebrow="DEBT CLEARANCE">
+          <p className="mb-4 text-[12px] leading-relaxed text-[#b3a06b]">
+            All repayments incur an extra <span className="text-[#f6e27a] font-semibold">1% interest fee</span> paid to the casino vault. Minimum repayment: 50,000 chips.
+          </p>
+          <div className="mb-4">
+            <label htmlFor="repay-amount" className="text-[10px] tracking-[0.2em] text-[#b3a06b]">REPAYMENT AMOUNT (DEBT)</label>
+            <input
+              id="repay-amount"
+              type="number"
+              value={repayAmount}
+              onChange={(e) => setRepayAmount(e.target.value)}
+              placeholder="Chips to repay…"
+              className="mt-1.5 w-full min-h-[44px] rounded border border-[#c9a227]/40 bg-black/40 px-3 text-[14px] text-[#f2e6c9] outline-none focus:border-[#f6e27a]"
+            />
+            {parseInt(repayAmount, 10) > 0 && (
+              <div className="mt-2 rounded border border-[#f59e0b]/30 bg-black/50 p-2.5 text-[11px] text-[#fde047]">
+                <div>Principal: <strong>{fmt(parseInt(repayAmount, 10))}</strong> chips</div>
+                <div>1% Interest Fee: <strong>+{fmt(Math.max(1, Math.ceil(parseInt(repayAmount, 10) * 0.01)))}</strong> chips</div>
+                <div className="border-t border-[#f59e0b]/20 mt-1 pt-1 font-bold text-[#86efac]">
+                  Total debited: {fmt(parseInt(repayAmount, 10) + Math.max(1, Math.ceil(parseInt(repayAmount, 10) * 0.01)))} chips
                 </div>
               </div>
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="number"
-                value={repayAmount}
-                onChange={(e) => setRepayAmount(e.target.value)}
-                placeholder={debt < MIN_REPAY ? `Pay off ${fmt(debt)}` : `Min ${fmt(MIN_REPAY)}`}
-                min={debt < MIN_REPAY ? debt : MIN_REPAY}
-                max={Math.min(wallet.balance, debt)}
-                className="flex-1 min-h-[44px] rounded-lg border border-[#ef4444]/40 bg-black/50 px-3 text-[14px] text-[#fee2e2] outline-none placeholder:text-[#6b5f42] focus:border-[#f87171]"
-              />
-              <button
-                onClick={handleRepay}
-                className="min-h-[44px] rounded-lg bg-gradient-to-r from-[#b91c1c] to-[#ef4444] px-5 text-[11px] font-black tracking-wider text-white shadow-md hover:brightness-110 active:scale-95"
-              >
-                REPAY
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[50000, 100000, 200000].filter(v => v <= Math.min(wallet.balance, debt) && (v >= MIN_REPAY || v === debt)).map(v => (
-                <button
-                  key={v}
-                  onClick={() => setRepayAmount(String(v))}
-                  className="rounded-lg border border-[#ef4444]/30 bg-black/40 px-3 py-1.5 text-[10px] font-semibold text-[#fca5a5] hover:border-[#f87171]"
-                >
-                  {fmt(v)}
-                </button>
-              ))}
-              {debt > 0 && debt <= wallet.balance && (
-                <button
-                  onClick={() => setRepayAmount(String(debt))}
-                  className="rounded-lg border border-[#f59e0b] bg-gradient-to-r from-[#d97706]/40 to-[#f59e0b]/40 px-3.5 py-1.5 text-[10px] font-black text-[#fef08a] hover:brightness-125"
-                >
-                  PAY IN FULL ({fmt(debt)})
-                </button>
-              )}
-            </div>
-          </section>
-        )}
+            )}
+          </div>
+          <button
+            onClick={handleRepay}
+            disabled={!wallet.loan || wallet.loan.balance <= 0}
+            className="btn-gold w-full min-h-[46px] rounded px-5 text-[11px] disabled:opacity-40"
+          >
+            REPAY DEBT (+ 1% INTEREST)
+          </button>
+        </Panel>
 
         {/* ===================== EMERGENCY 6K PACKAGE ===================== */}
         <Panel title="EMERGENCY PACKAGE" eyebrow="OUT OF CHIPS?">
           <p className="mb-4 text-[12px] leading-relaxed text-[#b3a06b]">
-            If your balance drops to exactly <span className="text-[#f6e27a] font-semibold">0 chips</span>, you can claim a free emergency package of <span className="text-[#f6e27a] font-semibold">{fmt(FREE_PACKAGE_AMOUNT)} chips</span> once per day to get back on your feet.
+            If your balance drops to exactly <span className="text-[#f6e27a] font-semibold">0 chips</span>, you can claim an emergency starter package of <span className="text-[#f6e27a] font-semibold">{fmt(FREE_PACKAGE_AMOUNT)} chips</span> once per day.
           </p>
           <div className="rounded-lg border border-[#c9a227]/20 bg-black/25 p-4 mb-4">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between">
               <div>
                 <div className="text-[13px] font-semibold text-[#f2e6c9]">Free Starter Package</div>
-                <div className="mt-1 text-[11px] text-[#8a7a4d]">{fmt(FREE_PACKAGE_AMOUNT)} chips · Available when balance = 0 · Once per day</div>
+                <div className="mt-1 text-[11px] text-[#8a7a4d]">{fmt(FREE_PACKAGE_AMOUNT)} chips · 0 balance required · Once per day</div>
               </div>
               <div className="text-2xl">🎁</div>
             </div>
@@ -724,217 +501,141 @@ export default function Bank() {
               ? 'PACKAGE CLAIMED TODAY'
               : `CLAIM ${fmt(FREE_PACKAGE_AMOUNT)} FREE CHIPS`}
           </button>
-          <p className="mt-2 text-[10px] text-[#6b5f42]">Only available when your balance is exactly 0. One claim per day.</p>
         </Panel>
 
-        {/* ===================== SPECIAL GIFTS & ADMIN ===================== */}
-        <Panel title="SPECIAL GIFTS" eyebrow="OWNER BONUSES · PASSWORD REQUIRED">
-          {giftError && (
-            <div className="mb-3 rounded border border-[#d4002a]/60 bg-[#2a050a]/70 px-3 py-2 text-[11px] text-[#ff97a3]">{giftError}</div>
-          )}
-          {giftMessage && (
-            <div className="mb-3 rounded border border-[#c9a227]/40 bg-[#2a2105]/70 px-3 py-2 text-[11px] text-[#f6e27a]">{giftMessage}</div>
-          )}
-
-          <div className="mb-4">
-            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">SELECT BONUS PROFILE</label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {GIFT_USERS.map((u) => (
-                <button
-                  key={u}
-                  onClick={() => { setSelectedGiftUser(u); setGiftPassword(''); setGiftError(''); setGiftMessage('') }}
-                  className={`min-h-[44px] rounded border text-[12px] font-semibold transition-colors ${selectedGiftUser === u ? 'border-[#f6e27a] bg-[#2a2105]/80 text-[#f6e27a]' : 'border-[#c9a227]/30 bg-black/30 text-[#b3a06b] hover:border-[#c9a227]/60'}`}
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-[#c9a227]/20 bg-black/25 p-3 mb-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-[12px] font-semibold text-[#f2e6c9]">{selectedGiftUser}'s Bonus</div>
-                <div className="mt-0.5 text-[10px] text-[#8a7a4d]">
-                  {fmt(GIFT_CONFIGS[selectedGiftUser].reward)} chips · {GIFT_CONFIGS[selectedGiftUser].unlimited ? 'Infinite claims allowed' : 'One-time bonus (lifetime)'}
-                  {selectedGiftUser !== 'ADMIN' && isLifetimeRedeemed(selectedGiftUser as 'Kiarash' | 'Nik') && (
-                    <span className="ml-2 font-bold text-[#ff97a3]">· REDEEMED (Locked by Great Admin)</span>
-                  )}
-                </div>
-              </div>
-              <div className="text-xl">{selectedGiftUser === 'ADMIN' ? '👑' : '🎁'}</div>
-            </div>
-          </div>
-
-          <div className="mb-3">
-            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">ACCESS PASSWORD</label>
-            <input
-              type="password"
-              value={giftPassword}
-              onChange={(e) => setGiftPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleGiftRedeem()}
-              placeholder="Enter password…"
-              autoComplete="off"
-              className="mt-1.5 w-full min-h-[44px] rounded border border-[#c9a227]/40 bg-black/40 px-3 text-[14px] text-[#f2e6c9] outline-none placeholder:text-[#6b5f42] focus:border-[#f6e27a]"
-            />
-          </div>
-          <button
-            onClick={handleGiftRedeem}
-            disabled={!giftPassword.trim()}
-            className="btn-gold w-full min-h-[46px] rounded px-5 text-[11px] disabled:opacity-40"
-          >
-            REDEEM {selectedGiftUser.toUpperCase()}'S BONUS
-          </button>
-          <p className="mt-2 text-[10px] text-[#6b5f42]">
-            Kiarash and Nik are one-time bonuses. The Great Admin holds infinite cash reserves.
-          </p>
-
-          {/* THE GREAT ADMIN CONSOLE */}
-          {isAdminUnlocked && (
-            <div className="mt-6 rounded-xl border-2 border-[#f59e0b] bg-gradient-to-br from-[#1c1305] via-[#2a1d06] to-[#120a02] p-4 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
-              <div className="flex items-center justify-between border-b border-[#f59e0b]/30 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">👑</span>
-                  <div>
-                    <div className="font-display text-sm font-black tracking-wider text-[#fef08a]">THE GREAT ADMIN CONSOLE</div>
-                    <div className="text-[9px] tracking-widest text-[#f59e0b]">INFINITE CASH RESERVES UNLOCKED</div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => { setIsAdminUnlocked(false); localStorage.removeItem('gf-great-admin-unlocked') }}
-                  className="rounded border border-[#f59e0b]/40 px-2 py-1 text-[9px] text-[#fde68a] hover:bg-black/50"
-                >
-                  LOCK CONSOLE
-                </button>
-              </div>
-
-              {/* Infinite Cash Grants */}
-              <div className="mt-3">
-                <div className="text-[10px] font-bold tracking-wider text-[#fde68a]">CASH RESERVES INJECTION</div>
-                <div className="mt-1.5 grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => handleAdminInfiniteCash(10000000)}
-                    className="rounded-lg bg-gradient-to-r from-[#d97706] to-[#f59e0b] px-3 py-2 text-[10px] font-black text-[#1a0e02] shadow hover:brightness-110 active:scale-95"
-                  >
-                    +10,000,000 CHIPS
-                  </button>
-                  <button
-                    onClick={() => handleAdminInfiniteCash(50000000)}
-                    className="rounded-lg bg-gradient-to-r from-[#b45309] to-[#d97706] px-3 py-2 text-[10px] font-black text-[#fffbeb] shadow hover:brightness-110 active:scale-95"
-                  >
-                    +50,000,000 CHIPS
-                  </button>
-                </div>
-              </div>
-
-              {/* Bonus Reset Controls */}
-              <div className="mt-4 border-t border-[#f59e0b]/20 pt-3">
-                <div className="text-[10px] font-bold tracking-wider text-[#fde68a]">RESET ONE-TIME GIFTS</div>
-                <div className="mt-2 space-y-2">
-                  <div className="flex items-center justify-between rounded-lg border border-[#f59e0b]/20 bg-black/40 p-2 text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-[#f2e6c9]">Kiarash (250k)</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${isLifetimeRedeemed('Kiarash') ? 'bg-[#ef4444]/20 text-[#fca5a5]' : 'bg-[#10b981]/20 text-[#86efac]'}`}>
-                        {isLifetimeRedeemed('Kiarash') ? 'REDEEMED' : 'AVAILABLE'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={handleAdminResetKiarash}
-                      className="rounded border border-[#f59e0b]/60 bg-[#d97706]/30 px-3 py-1 text-[9px] font-black text-[#fef08a] hover:bg-[#d97706]/60 active:scale-95"
-                    >
-                      RESET BONUS
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-lg border border-[#f59e0b]/20 bg-black/40 p-2 text-[11px]">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-[#f2e6c9]">Nik (250k)</span>
-                      <span className={`rounded px-1.5 py-0.5 text-[8px] font-bold ${isLifetimeRedeemed('Nik') ? 'bg-[#ef4444]/20 text-[#fca5a5]' : 'bg-[#10b981]/20 text-[#86efac]'}`}>
-                        {isLifetimeRedeemed('Nik') ? 'REDEEMED' : 'AVAILABLE'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={handleAdminResetNik}
-                      className="rounded border border-[#f59e0b]/60 bg-[#d97706]/30 px-3 py-1 text-[9px] font-black text-[#fef08a] hover:bg-[#d97706]/60 active:scale-95"
-                    >
-                      RESET BONUS
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </Panel>
-
-        {/* ===================== CASH INJECTION ===================== */}
-        <Panel title="CASH INJECTION" eyebrow="SECRET ADMIN PROTOCOL" className="lg:col-span-2">
+        {/* ===================== ROLES & STARTING GRANTS ===================== */}
+        <Panel title="PLAYER ROLES & STARTING GRANTS" eyebrow="OFFICIAL ROSTER · SERVER VERIFIED" className="lg:col-span-2">
           <p className="mb-4 text-[12px] leading-relaxed text-[#b3a06b]">
-            Those seeking a government-grade bailout must prove their clearance. Guess the Admin's true identity and secret birthday below to unlock a massive{' '}
-            <span className="text-[#f6e27a] font-semibold">250,000 chips cash injection</span>.
+            Starting grants for recognized house figures. Grants are strictly one-time and lock permanently to the claimant's account upon server-side password verification.
           </p>
 
-          {/* Admin Identity Selector */}
-          <div className="mb-4">
-            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">STEP 1: WHO IS THE GREAT ADMIN?</label>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              {[
-                { id: 'netenyahu', label: 'Netanyahu', icon: '🏛️', desc: 'The Statesman' },
-                { id: 'big_jeff', label: 'Big Jeff', icon: '🎩', desc: 'The High Roller' },
-                { id: 'cius', label: 'Cius', icon: '👑', desc: 'The House Master' },
-              ].map((adm) => (
-                <button
-                  key={adm.id}
-                  type="button"
-                  onClick={() => {
-                    setAdminGuess(adm.id as 'netenyahu' | 'big_jeff' | 'cius')
-                    setBirthdayMsg('')
-                    setBirthdayErr('')
-                    sfx.click()
-                  }}
-                  className={`flex flex-col items-center justify-center rounded-xl border p-3 transition-all ${
-                    adminGuess === adm.id
-                      ? 'border-[#f6e27a] bg-[#2a2105]/90 shadow-[0_0_15px_rgba(246,226,122,0.4)] scale-[1.02]'
+          {grantError && (
+            <div className="mb-4 rounded-xl border border-red-500/50 bg-red-950/70 p-3.5 text-center text-[12px] font-semibold text-red-300">
+              {grantError}
+            </div>
+          )}
+
+          {grantSuccess && (
+            <div className="mb-4 rounded-xl border border-emerald-500/50 bg-emerald-950/70 p-3.5 text-center text-[12px] font-semibold text-emerald-300">
+              {grantSuccess}
+            </div>
+          )}
+
+          {/* Roster Cards Grid */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {grantRoles.map((role) => {
+              const isSelected = selectedRole?.role_name === role.role_name
+              return (
+                <div
+                  key={role.role_name}
+                  className={`flex flex-col justify-between rounded-xl border p-4 transition-all ${
+                    role.is_claimed
+                      ? 'border-[#3f3f46]/40 bg-black/30 opacity-60'
+                      : isSelected
+                      ? 'border-[#f6e27a] bg-[#2a2105]/80 shadow-[0_0_15px_rgba(246,226,122,0.3)]'
                       : 'border-[#c9a227]/30 bg-black/40 hover:border-[#c9a227]/60'
                   }`}
                 >
-                  <span className="text-xl mb-1">{adm.icon}</span>
-                  <span className={`font-display text-[13px] font-bold ${adminGuess === adm.id ? 'text-[#f6e27a]' : 'text-[#f2e6c9]'}`}>
-                    {adm.label}
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <span className="rounded bg-[#f6e27a]/15 border border-[#f6e27a]/40 px-2 py-0.5 text-[8px] font-black tracking-widest text-[#f6e27a] uppercase">
+                        {role.title}
+                      </span>
+                      {role.is_claimed ? (
+                        <span className="rounded bg-red-900/40 border border-red-600/40 px-1.5 py-0.5 text-[8px] font-black text-red-300">
+                          CLAIMED
+                        </span>
+                      ) : (
+                        <span className="rounded bg-emerald-900/40 border border-emerald-600/40 px-1.5 py-0.5 text-[8px] font-black text-emerald-300">
+                          AVAILABLE
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-display mt-2 text-lg font-bold text-[#f2e6c9]">
+                      {role.role_name}
+                    </div>
+                    <div className="mt-1 text-[11px] font-semibold text-[#86efac]">
+                      +{fmt(role.grant_chips)} chips
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    {role.is_claimed ? (
+                      <div className="text-center text-[10px] text-[#6b5f42]">One-time grant claimed</div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSelectedRole(role)
+                          setRolePasswordInput('')
+                          setGrantError('')
+                          setGrantSuccess('')
+                          sfx.click()
+                        }}
+                        className={`w-full rounded py-1.5 text-[10px] font-black tracking-wider transition-all ${
+                          isSelected ? 'btn-gold shadow-md' : 'btn-ghost-gold'
+                        }`}
+                      >
+                        REDEEM GRANT
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Secure Claim Dialog */}
+          {selectedRole && (
+            <div className="mt-6 rounded-xl border-2 border-[#f6e27a]/60 bg-gradient-to-br from-[#1c1405] via-[#241a06] to-[#0f0b02] p-5 shadow-2xl">
+              <div className="flex items-center justify-between border-b border-[#c9a227]/30 pb-3">
+                <div className="flex items-center gap-2">
+                  <KeyRound size={18} className="text-[#f6e27a]" />
+                  <span className="font-display text-sm font-black tracking-wider text-[#fef08a]">
+                    VERIFY {selectedRole.role_name.toUpperCase()} GRANT
                   </span>
-                  <span className="text-[10px] text-[#8a7a4d]">{adm.desc}</span>
+                </div>
+                <button
+                  onClick={() => setSelectedRole(null)}
+                  className="text-xs text-[#a89872] hover:text-white"
+                >
+                  ✕ CANCEL
                 </button>
-              ))}
+              </div>
+
+              <div className="mt-4">
+                <p className="text-[12px] text-[#b3a06b]">
+                  Enter the secure grant password to permanently credit <strong>{fmt(selectedRole.grant_chips)} chips</strong> to your account:
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="password"
+                    value={rolePasswordInput}
+                    onChange={(e) => setRolePasswordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleClaimGrant()}
+                    placeholder="Enter grant password…"
+                    autoComplete="off"
+                    className="flex-1 min-h-[44px] rounded-lg border border-[#c9a227]/50 bg-black/60 px-3.5 text-[14px] text-[#f2e6c9] outline-none focus:border-[#f6e27a]"
+                  />
+                  <button
+                    onClick={handleClaimGrant}
+                    disabled={!rolePasswordInput.trim() || grantLoading}
+                    className="btn-gold min-h-[44px] rounded-lg px-6 text-[11px] font-black tracking-wider disabled:opacity-40"
+                  >
+                    {grantLoading ? 'VERIFYING...' : 'CONFIRM & REDEEM'}
+                  </button>
+                </div>
+                <p className="mt-2 text-[9px] text-[#6b5f42]">
+                  Verification runs server-side in a security definer RPC. Passwords are never validated in the browser or exposed to the client.
+                </p>
+              </div>
             </div>
-          </div>
-
-          {/* Birthday Date Picker */}
-          <div className="mb-4">
-            <label className="text-[10px] tracking-[0.2em] text-[#b3a06b]">STEP 2: GUESS ADMIN'S SECRET BIRTHDAY</label>
-            <input
-              type="date"
-              value={birthdayDate}
-              onChange={(e) => { setBirthdayDate(e.target.value); setBirthdayMsg(''); setBirthdayErr('') }}
-              className="mt-1.5 w-full min-h-[44px] rounded-lg border border-[#c9a227]/40 bg-black/40 px-3 text-[14px] text-[#f2e6c9] outline-none focus:border-[#f6e27a]"
-            />
-          </div>
-
-          {birthdayErr && <div className="mb-3 rounded-lg border border-[#d4002a]/60 bg-[#2a050a]/70 px-3.5 py-2.5 text-[11px] text-[#ff97a3]">{birthdayErr}</div>}
-          {birthdayMsg && <div className="mb-3 rounded-lg border border-[#c9a227]/40 bg-[#2a2105]/70 px-3.5 py-2.5 text-[11px] text-[#f6e27a]">{birthdayMsg}</div>}
-
-          <button
-            onClick={handleBirthdayInjection}
-            disabled={!adminGuess || !birthdayDate}
-            className="btn-gold w-full min-h-[46px] rounded-lg px-5 text-[11px] font-black tracking-wider disabled:opacity-40"
-          >
-            REQUEST 250,000 CHIPS CASH INJECTION
-          </button>
-          <p className="mt-2 text-[10px] text-[#6b5f42]">Strict clearance required. One injection per device per calendar year.</p>
+          )}
         </Panel>
 
       </div>
 
       <div className="mt-8 text-center">
-        <p className="text-[10px] tracking-[0.28em] text-[#6b5f42]">ALL TRANSACTIONS ARE FINAL · FOR ENTERTAINMENT ONLY</p>
+        <p className="text-[10px] tracking-[0.28em] text-[#6b5f42]">ALL TRANSACTIONS ARE FINAL · PLAY RESPONSIBLY</p>
       </div>
     </div>
   )

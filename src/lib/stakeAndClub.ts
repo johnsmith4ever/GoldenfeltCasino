@@ -1,32 +1,40 @@
-import { investInGlobalStake, joinGlobalClub } from './supabase'
+import { investInGlobalStake, joinGlobalClub, fetchGlobalStakeInvestors } from './supabase'
 
 export interface StakePoolData {
   contributions: Record<string, number>
   totalPool: number
 }
 
-const STAKE_KEY = 'golden-felt-stake-pool-v2'
+const STAKE_KEY = 'golden-felt-stake-pool-v10'
 const CLUB_KEY = 'golden-felt-club-members-v1'
 
 export function getStakePool(): StakePoolData {
   try {
-    // Purge legacy v1 stake pool data ("seized by the state")
-    if (localStorage.getItem('golden-felt-stake-pool-v1')) {
-      localStorage.removeItem('golden-felt-stake-pool-v1')
+    // Purge all legacy versions containing dummy mock data
+    for (let i = 1; i <= 9; i++) {
+      localStorage.removeItem(`golden-felt-stake-pool-v${i}`)
     }
+
     const raw = localStorage.getItem(STAKE_KEY)
     let contributions: Record<string, number> = {}
+
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed.contributions === 'object') {
         for (const [k, v] of Object.entries(parsed.contributions)) {
           const num = Number(v)
+          const lower = k.toLowerCase().trim()
+          // Never allow seeded mock names
+          if (['the house', 'kiarash', 'johnsmith', 'nik', 'toby', 'ethan', 'george', 'abhay'].includes(lower)) {
+            continue
+          }
           if (Number.isFinite(num) && num > 0) {
             contributions[k] = num
           }
         }
       }
     }
+
     const totalPool = Object.values(contributions).reduce((sum, v) => sum + v, 0)
     return { contributions, totalPool }
   } catch {
@@ -38,36 +46,67 @@ export function investInStakePool(
   playerName: string,
   amount: number
 ): { totalPool: number; myContribution: number; myPercent: number } {
-  const current = getStakePool()
   const cleanName = playerName.trim() || 'Player'
-  const existingKey = Object.keys(current.contributions).find(
-    (k) => k.toLowerCase() === cleanName.toLowerCase()
-  )
-  const key = existingKey ?? cleanName
-  const myCurrent = current.contributions[key] || 0
-  current.contributions[key] = myCurrent + amount
+  const current = getStakePool()
+  const myCurrent = current.contributions[cleanName] || 0
+  current.contributions[cleanName] = myCurrent + amount
+  const totalPool = Object.values(current.contributions).reduce((sum, v) => sum + v, 0)
 
   try {
-    localStorage.setItem(STAKE_KEY, JSON.stringify({ contributions: current.contributions }))
+    localStorage.setItem(STAKE_KEY, JSON.stringify(current))
     window.dispatchEvent(new Event('stake-pool-updated'))
-    investInGlobalStake(playerName, amount).catch(() => {})
+    investInGlobalStake(cleanName, amount).then(() => {
+      syncStakePoolFromSupabase().catch(() => {})
+    }).catch(() => {})
   } catch {}
 
-  const totalPool = Object.values(current.contributions).reduce((sum, v) => sum + (Number(v) || 0), 0)
-  const myContribution = current.contributions[key]
+  const myContribution = current.contributions[cleanName]
   const myPercent = totalPool > 0 ? (myContribution / totalPool) * 100 : 0
   return { totalPool, myContribution, myPercent }
 }
 
 export function getPlayerStake(playerName: string): { totalPool: number; contribution: number; percent: number } {
   const current = getStakePool()
-  const cleanName = (playerName || '').trim()
-  const existingKey = Object.keys(current.contributions).find(
-    (k) => k.toLowerCase() === cleanName.toLowerCase()
-  )
-  const contribution = existingKey ? current.contributions[existingKey] : 0
-  const percent = current.totalPool > 0 ? (contribution / current.totalPool) * 100 : 0
-  return { totalPool: current.totalPool, contribution, percent }
+  const cleanTarget = (playerName || 'Player').trim().toLowerCase()
+  let contribution = 0
+  for (const [k, v] of Object.entries(current.contributions)) {
+    if (k.toLowerCase().trim() === cleanTarget) {
+      contribution += v
+    }
+  }
+  const totalPool = current.totalPool > 0 ? current.totalPool : Object.values(current.contributions).reduce((a, b) => a + b, 0)
+  const percent = totalPool > 0 ? Math.round((contribution / totalPool) * 1000) / 10 : 0
+  return { totalPool, contribution, percent }
+}
+
+export async function syncStakePoolFromSupabase(): Promise<StakePoolData> {
+  try {
+    const remote = await fetchGlobalStakeInvestors()
+    const currentLocal = getStakePool()
+    if (remote && remote.length > 0) {
+      const contributions: Record<string, number> = {}
+      for (const inv of remote) {
+        const name = (inv.player_name || '').trim()
+        if (name && inv.tokens_staked > 0) {
+          contributions[name] = inv.tokens_staked
+        }
+      }
+      // Preserve local contribution if higher (pending sync)
+      for (const [k, v] of Object.entries(currentLocal.contributions)) {
+        if (!contributions[k] || contributions[k] < v) {
+          contributions[k] = v
+        }
+      }
+      const totalPool = Object.values(contributions).reduce((a, b) => a + b, 0)
+      const data: StakePoolData = { contributions, totalPool }
+      localStorage.setItem(STAKE_KEY, JSON.stringify(data))
+      window.dispatchEvent(new Event('stake-pool-updated'))
+      return data
+    }
+  } catch (err) {
+    console.warn('Failed to sync stake pool from Supabase:', err)
+  }
+  return getStakePool()
 }
 
 export interface ClubMember {
@@ -111,4 +150,3 @@ export function joinClub(playerName: string, title = 'High Roller'): ClubMember[
   }
   return members
 }
-

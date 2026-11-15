@@ -54,7 +54,20 @@ function PlayerStart() {
 }
 
 function CasinoApp({ playerName }: { playerName: string }) {
-  const [screen, setScreen] = useState<Screen>('lobby')
+  const [screen, setScreenState] = useState<Screen>(() => {
+    try {
+      const saved = sessionStorage.getItem('golden-felt-current-screen')
+      if (saved) return saved as Screen
+    } catch {}
+    return 'lobby'
+  })
+
+  const setScreen = (s: Screen) => {
+    try {
+      sessionStorage.setItem('golden-felt-current-screen', s)
+    } catch {}
+    setScreenState(s)
+  }
   return (
     <ChipsProvider>
       <ShopProvider>
@@ -71,9 +84,9 @@ function CasinoApp({ playerName }: { playerName: string }) {
           />
           <main>
             {screen === 'lobby' && <Lobby onSelect={setScreen} />}
-            {screen === 'shop' && <Shop />}
+            {screen === 'shop' && <Shop onProperties={() => setScreen('properties')} />}
             {screen === 'properties' && <Properties />}
-            {screen === 'club' && <Club />}
+            {screen === 'club' && <Club onShop={() => setScreen('shop')} />}
             {screen === 'bank' && <Bank />}
             {screen === 'leaderboard' && <Leaderboard />}
             {screen === 'blackjack' && <Blackjack />}

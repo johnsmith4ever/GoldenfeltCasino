@@ -1,13 +1,19 @@
 import { fmt } from '../state/chips'
 
 export const CHIP_DENOMS = [
-  { value: 25, base: '#e8e4da', ring: '#b3001b', text: '#1a1a1a' },
-  { value: 100, base: '#14141a', ring: '#e8e4da', text: '#f2e6c9' },
-  { value: 500, base: '#5c0f6e', ring: '#e8e4da', text: '#f2e6c9' },
-  { value: 1000, base: '#c9a227', ring: '#7a0018', text: '#1a1405' },
+  { value: 25, base: '#e8e4da', ring: '#b3001b', text: '#1a1a1a', label: '25' },
+  { value: 100, base: '#14141a', ring: '#e8e4da', text: '#f2e6c9', label: '100' },
+  { value: 500, base: '#5c0f6e', ring: '#e8e4da', text: '#f2e6c9', label: '500' },
+  { value: 1000, base: '#c9a227', ring: '#7a0018', text: '#1a1405', label: '1K' },
+  { value: 5000, base: '#0284c7', ring: '#38bdf8', text: '#ffffff', label: '5K' },
+  { value: 10000, base: '#059669', ring: '#34d399', text: '#ffffff', label: '10K' },
+  { value: 25000, base: '#881337', ring: '#fbbf24', text: '#fde047', label: '25K' },
 ] as const
 
 export function chipColorFor(value: number) {
+  if (value >= 25000) return CHIP_DENOMS[6]
+  if (value >= 10000) return CHIP_DENOMS[5]
+  if (value >= 5000) return CHIP_DENOMS[4]
   if (value >= 1000) return CHIP_DENOMS[3]
   if (value >= 500) return CHIP_DENOMS[2]
   if (value >= 100) return CHIP_DENOMS[1]
@@ -48,10 +54,10 @@ export function Chip({
       <circle cx="60" cy="60" r="33" fill="none" stroke={c.ring} strokeWidth="0.8" strokeDasharray="2 3" opacity="0.7" />
       <text
         x="60" y="61" textAnchor="middle" dominantBaseline="central"
-        fill={c.text} fontSize={value >= 1000 ? 26 : 30} fontWeight="700"
+        fill={c.text} fontSize={value >= 10000 ? 21 : value >= 1000 ? 25 : 30} fontWeight="700"
         fontFamily="'Cinzel', serif"
       >
-        {label ?? (value >= 1000 ? '1K' : value)}
+        {label ?? (value >= 1000 ? `${value / 1000}K` : value)}
       </text>
       {/* top light */}
       <ellipse cx="45" cy="34" rx="26" ry="12" fill="rgba(255,255,255,0.16)" transform="rotate(-24 45 34)" />
@@ -80,7 +86,7 @@ export function BetStack({ amount, size = 40 }: { amount: number; size?: number 
     <span className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
       <span className="absolute inset-0 rounded-full border-2" style={{ background: c.base, borderColor: c.ring }} />
       <span className="relative font-display font-bold" style={{ color: c.text, fontSize: size * 0.3 }}>
-        {amount >= 1000 ? `${amount / 1000}K` : amount}
+        {amount >= 1000000 ? `${(amount / 1000000).toFixed(1)}M` : amount >= 1000 ? `${amount / 1000}K` : amount}
       </span>
     </span>
   )
@@ -97,7 +103,7 @@ export function ChipPile({ amount, size = 34 }: { amount: number; size?: number 
   )
   const STEP = 5
   return (
-    <span className="inline-flex items-end gap-3">
+    <span className="inline-flex flex-wrap items-end gap-2 sm:gap-3">
       {groups.map((g) => {
         const shown = Math.min(g.n, 6)
         return (
@@ -126,12 +132,12 @@ export function ChipSelector({
   max: number
 }) {
   return (
-    <div className="flex items-end gap-3">
+    <div className="flex flex-wrap items-end justify-center gap-2 sm:gap-3">
       {CHIP_DENOMS.map((d) => (
         <Chip
           key={d.value}
           value={d.value}
-          size={selected === d.value ? 62 : 54}
+          size={selected === d.value ? 60 : 52}
           selected={selected === d.value}
           disabled={d.value > max}
           onClick={() => onSelect(d.value)}

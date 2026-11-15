@@ -7,7 +7,7 @@ import { Dices, Sparkles } from 'lucide-react'
 
 type BetChoice = 'low' | 'high' | 'odd' | 'even'
 
-const PRESET_BETS = [25, 100, 500, 1000, 5000, 25000]
+const PRESET_BETS = [25, 100, 500, 1000, 5000, 10000, 25000]
 
 export default function DiceGame() {
   const { balance, bet, payout, recordLoss, markHand } = useChips()

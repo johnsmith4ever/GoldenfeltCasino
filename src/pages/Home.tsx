@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket, Disc, Coins } from 'lucide-react'
+import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket, Disc, Coins, Sparkles, Building2 } from 'lucide-react'
 import { type Screen, type GameId, RotatingSeal, StatsStrip } from '../components/GameShell'
 import { DailyGift } from './Shop'
 import { sfx } from '../lib/audio'
@@ -71,7 +71,7 @@ const MARQUEE_ITEMS = [
   'PLAY MONEY ONLY', 'NO REAL WAGERING', 'THE HOUSE WELCOMES YOU',
 ]
 
-type Group = 'Admin Pre-Release' | 'Casino classics' | 'Table games' | 'Quick games'
+type Group = 'Featured games' | 'Casino classics' | 'Table games' | 'Quick games'
 
 const GAMES: {
   id: GameId
@@ -83,10 +83,10 @@ const GAMES: {
   minBet: string
   isPreRelease?: boolean
 }[] = [
-  { id: 'rocket', group: 'Admin Pre-Release', name: 'Rocket Crash', desc: 'Exponential multiplier ascent into deep space. Bail out before the rocket explodes!', icon: Rocket, accent: '#b45309', minBet: '25', isPreRelease: true },
-  { id: 'wheel', group: 'Admin Pre-Release', name: 'Lucky Wheel', desc: 'High-volatility casino wheel. 15 zeros, 1.5x, 2x, 5x and a legendary 10x jackpot!', icon: Disc, accent: '#7c3aed', minBet: '25', isPreRelease: true },
-  { id: 'dice', group: 'Admin Pre-Release', name: 'Lucky Dice', desc: 'High or Low dice roll with true casino odds. Predict right for a 1.95x payout!', icon: Dices, accent: '#059669', minBet: '25', isPreRelease: true },
-  { id: 'coinflip', group: 'Admin Pre-Release', name: 'Coin Flip', desc: 'Pure 50/50 high-stakes coin toss. Heads or Tails pays 1.95x total return.', icon: Coins, accent: '#d97706', minBet: '25', isPreRelease: true },
+  { id: 'wheel', group: 'Featured games', name: 'Lucky Wheel', desc: 'High-volatility casino wheel. 15 zeros, 1.5x, 2x, 5x and a legendary 10x multiplier jackpot!', icon: Disc, accent: '#7c3aed', minBet: '25' },
+  { id: 'dice', group: 'Featured games', name: 'Lucky Dice', desc: 'High or Low dice roll with true casino odds. Predict right for a 1.95x payout!', icon: Dices, accent: '#059669', minBet: '25' },
+  { id: 'coinflip', group: 'Featured games', name: 'Coin Flip', desc: 'Pure 50/50 high-stakes coin toss. Heads or Tails pays 1.95x total return.', icon: Coins, accent: '#d97706', minBet: '25' },
+  { id: 'rocket', group: 'Featured games', name: 'Rocket (Closed)', desc: 'Rocket has been removed. It was really annoying to patch the money glitches, so please stop trying to find ways to cause hyperinflation.', icon: Rocket, accent: '#b45309', minBet: 'N/A' },
   { id: 'blackjack', group: 'Casino classics', name: 'Blackjack', desc: 'Beat the dealer to twenty-one. Blackjack pays 3 to 2.', icon: Spade, accent: '#176148', minBet: '25' },
   { id: 'roulette', group: 'Casino classics', name: 'Roulette', desc: 'Single-zero European wheel. Straight up pays 35 to 1.', icon: CircleDot, accent: '#5c0f14', minBet: '25' },
   { id: 'slots', group: 'Casino classics', name: 'Grand Slots', desc: 'Three gilded reels. Triple diamonds pay 500 to 1.', icon: Cherry, accent: '#7a1220', minBet: '25' },
@@ -99,7 +99,7 @@ const GAMES: {
   { id: 'keno', group: 'Quick games', name: 'Keno', desc: 'Pick up to ten of eighty numbers. Twenty are drawn.', icon: Grid3x3, accent: '#7a1220', minBet: '25' },
 ]
 
-const GROUPS: Group[] = ['Admin Pre-Release', 'Casino classics', 'Table games', 'Quick games']
+const GROUPS: Group[] = ['Featured games', 'Casino classics', 'Table games', 'Quick games']
 
 export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
   return (
@@ -157,6 +157,37 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
       {/* Hall of Fame Plaque (Compact) */}
       <HallOfFamePlaque onOpenClub={() => onSelect('club')} />
 
+      {/* Casino Stakes & Venues Banner */}
+      <section className="mx-auto mb-8 max-w-6xl px-4">
+        <div className="panel-noir flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#38bdf8]/40 bg-gradient-to-r from-black/85 via-[#071829]/75 to-black/85 p-3.5 sm:px-5 shadow-lg">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#38bdf8]/40 bg-[#071829] shadow">
+              <Building2 size={22} className="text-[#38bdf8]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-display text-[13px] font-bold tracking-[0.18em] text-[#7dd3fc]">
+                  CASINO STAKE POOL &amp; PROPERTY DEEDS
+                </span>
+                <span className="rounded bg-[#0284c7]/30 border border-[#38bdf8]/50 px-2 py-0.5 text-[9px] font-black text-[#7dd3fc]">
+                  POOL + 8 VENUES
+                </span>
+              </div>
+              <p className="mt-0.5 text-[11px] text-[#93c5fd]">
+                Stake tokens into the community equity pool to own a cut of the casino, or buy sovereign venue deeds.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => { sfx.click(); onSelect('properties') }}
+            className="btn-gold flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-black tracking-wider shrink-0 shadow-md"
+          >
+            <Sparkles size={12} className="text-[#140b02]" />
+            BUY CASINO STAKES →
+          </button>
+        </div>
+      </section>
+
       {/* Game cards, by kind */}
       {GROUPS.map((group) => (
         <section key={group} className="mx-auto mb-10 max-w-6xl px-4">
@@ -180,11 +211,15 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
                   <div className="flex items-start justify-between">
                     <Icon size={34} strokeWidth={1.4} className="text-[#d4af37] transition-transform duration-300 group-hover:scale-110" />
                     <div className="flex items-center gap-1.5">
-                      {g.isPreRelease && (
-                        <span className="rounded bg-[#f59e0b]/25 border border-[#f59e0b]/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-[#fde047] shadow-[0_0_10px_rgba(245,158,11,0.4)]">
-                          ADMIN PRE-RELEASE
+                      {g.id === 'rocket' ? (
+                        <span className="rounded bg-red-950/60 border border-red-500/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-red-300">
+                          CLOSED
                         </span>
-                      )}
+                      ) : g.isPreRelease ? (
+                        <span className="rounded bg-[#f59e0b]/25 border border-[#f59e0b]/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-[#fde047] shadow-[0_0_10px_rgba(245,158,11,0.4)]">
+                          FEATURED
+                        </span>
+                      ) : null}
                       <span className="rounded-full border border-[#c9a227]/30 px-2.5 py-0.5 text-[10px] tracking-[0.2em] text-[#b3a06b]">
                         MIN {g.minBet}
                       </span>

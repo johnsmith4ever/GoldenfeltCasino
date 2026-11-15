@@ -302,9 +302,9 @@ export default function Blackjack() {
         <div className="mt-8 flex min-h-[92px] flex-col items-center justify-center gap-3">
           {phase === 'betting' && (
             <>
-              <div className="flex items-end justify-center gap-3">
+              <div className="flex flex-wrap items-end justify-center gap-2 sm:gap-3">
                 {CHIP_DENOMS.map((d) => (
-                  <Chip key={d.value} value={d.value} size={58} disabled={d.value > balance} onClick={() => addChip(d.value)} />
+                  <Chip key={d.value} value={d.value} size={52} disabled={d.value > balance} onClick={() => addChip(d.value)} />
                 ))}
               </div>
               <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">

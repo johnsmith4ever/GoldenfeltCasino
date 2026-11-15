@@ -244,9 +244,9 @@ export default function ThreeCardPoker({ nav, rules }: { nav: ReactNode; rules: 
               <p className="text-[11px] tracking-[0.2em] text-[#8a7a4d]">
                 {carried ? 'SAME BETS AS LAST HAND · ' : ''}TAP CHIPS TO ADD TO: <b className="text-[#f6e27a]">{target === 'ante' ? 'ANTE' : 'PAIR PLUS'}</b>
               </p>
-              <div className="flex items-end justify-center gap-3">
+              <div className="flex flex-wrap items-end justify-center gap-2 sm:gap-3">
                 {CHIP_DENOMS.map((d) => (
-                  <Chip key={d.value} value={d.value} size={narrow ? 50 : 58} disabled={d.value > balance} onClick={() => addChip(d.value)} />
+                  <Chip key={d.value} value={d.value} size={narrow ? 44 : 52} disabled={d.value > balance} onClick={() => addChip(d.value)} />
                 ))}
               </div>
               <div className="flex flex-wrap items-center justify-center gap-3">
