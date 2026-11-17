@@ -52,6 +52,42 @@ const ROULETTE_WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 
 const ROULETTE_REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36])
 const SEG = 360 / 37
 const BOX = 300
+const SCALE = BOX / 400
+const R_TRACK = 190 * SCALE
+const R_POCKET = 170 * SCALE
+const mod = (a: number, n: number) => ((a % n) + n) % n
+const easeOutCubic = (p: number) => 1 - Math.pow(1 - p, 3)
+
+function ballRadius(p: number): number {
+  if (p < 0.04) return R_POCKET + (R_TRACK - R_POCKET) * (p / 0.04)
+  if (p < 0.62) return R_TRACK
+  if (p < 0.84) {
+    const s = (p - 0.62) / 0.22
+    return R_TRACK + (R_POCKET - R_TRACK) * s * s + 6 * (1 - s) * Math.abs(Math.sin(s * Math.PI * 3))
+  }
+  return R_POCKET
+}
+
+function ballJitter(p: number): number {
+  if (p < 0.62 || p >= 0.84) return 0
+  const s = (p - 0.62) / 0.22
+  return 8 * (1 - s) * Math.sin(s * Math.PI * 5)
+}
+
+function placeWheelAndBall(
+  wheel: SVGSVGElement | null,
+  ball: HTMLDivElement | null,
+  wheelDeg: number,
+  ballRelDeg: number,
+  r: number
+) {
+  if (wheel) wheel.style.transform = `rotate(${wheelDeg}deg)`
+  if (ball) {
+    const a = ((wheelDeg + ballRelDeg) * Math.PI) / 180
+    ball.style.transform = `translate(${BOX / 2 + r * Math.sin(a)}px, ${BOX / 2 - r * Math.cos(a)}px)`
+  }
+}
+
 function roulettePocketColor(n: number): string {
   if (n === 0) return '#0e5c3a'
   return ROULETTE_REDS.has(n) ? '#a3001f' : '#141419'
@@ -104,12 +140,20 @@ function RouletteWheelSvg({
 
   return (
     <div className="relative mx-auto" style={{ width: BOX, height: BOX }}>
+      {/* Top pointer indicating winning pocket */}
+      <div className="pointer-events-none absolute left-1/2 top-[-6px] z-20 -translate-x-1/2">
+        <div
+          className="h-0 w-0 border-l-[9px] border-r-[9px] border-t-[16px] border-l-transparent border-r-transparent"
+          style={{ borderTopColor: '#f6e27a', filter: 'drop-shadow(0 0 6px rgba(246,226,122,0.8))' }}
+        />
+      </div>
+
       <svg
         ref={wheelRef}
         viewBox="0 0 400 400"
         width={BOX}
         height={BOX}
-        className="will-change-transform drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)]"
+        className="roulette-wheel will-change-transform drop-shadow-[0_15px_30px_rgba(0,0,0,0.8)]"
       >
         <circle cx="200" cy="200" r="198" fill="#1b1408" stroke="#f6e27a" strokeWidth="3" />
         <circle cx="200" cy="200" r="185" fill="#2a1f0a" stroke="#c9a227" strokeWidth="1" />
@@ -120,7 +164,8 @@ function RouletteWheelSvg({
       </svg>
       <div
         ref={ballRef}
-        className="pointer-events-none absolute left-0 top-0 h-3.5 w-3.5 -ml-[7px] -mt-[7px] rounded-full bg-white shadow-[0_0_8px_#fff,0_0_16px_rgba(255,255,255,0.8)] will-change-transform"
+        className="roulette-ball pointer-events-none will-change-transform"
+        aria-hidden="true"
       />
     </div>
   )
@@ -191,6 +236,9 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
   const [rouletteLastWinners, setRouletteLastWinners] = useState<{ name: string; amount: number }[]>([])
   const wheelSvgRef = useRef<SVGSVGElement | null>(null)
   const ballDivRef = useRef<HTMLDivElement | null>(null)
+  const wheelRotRef = useRef<number>(0)
+  const ballIdxRef = useRef<number>(0)
+  const rouletteRafRef = useRef<number>(0)
 
   // -------------------------------------------------------------------------
   // GAME STATES: BLACKJACK
@@ -283,6 +331,65 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
     ])
     sfx.click()
   }
+
+  // Physics-based Roulette Spin Animation (Synchronized for Host & Party Guests)
+  const animateRouletteSpin = useCallback((winningNum: number, onComplete?: () => void) => {
+    const idx = ROULETTE_WHEEL.indexOf(winningNum)
+    if (idx === -1) return
+
+    setRouletteSpinning(true)
+    setRouletteWinningNum(null)
+    sfx.spin()
+
+    const reduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const T = reduced ? 1400 : 4200
+    const w0 = wheelRotRef.current
+    const prevIdx = ballIdxRef.current
+    // Wheel turns clockwise and slows to a stop with the winning pocket under the top pointer.
+    const wTotal = 360 * (reduced ? 1 : 3 + Math.floor(Math.random() * 2)) + mod(-(w0 + idx * SEG), 360)
+    // Ball orbits counter to wheel (relative), starting from where it was resting.
+    const r0 = 360 * (reduced ? 1 : 6 + Math.floor(Math.random() * 2)) + mod((prevIdx - idx) * SEG, 360)
+    const K = 2.4
+    const start = performance.now()
+
+    cancelAnimationFrame(rouletteRafRef.current)
+    const frame = (now: number) => {
+      const p = Math.min(1, (now - start) / T)
+      const rel = idx * SEG + r0 * Math.pow(1 - p, K) + ballJitter(p)
+      placeWheelAndBall(wheelSvgRef.current, ballDivRef.current, w0 + wTotal * easeOutCubic(p), rel, ballRadius(p))
+      if (p < 1) {
+        rouletteRafRef.current = requestAnimationFrame(frame)
+      } else {
+        wheelRotRef.current = w0 + wTotal
+        ballIdxRef.current = idx
+        setRouletteSpinning(false)
+        setRouletteWinningNum(winningNum)
+        sfx.reelStop()
+        if (onComplete) onComplete()
+      }
+    }
+    rouletteRafRef.current = requestAnimationFrame(frame)
+  }, [])
+
+  // Place roulette wheel & ball on mount or status change
+  useEffect(() => {
+    if (activeRoom?.status === 'playing' && activeRoom?.game === 'roulette') {
+      placeWheelAndBall(
+        wheelSvgRef.current,
+        ballDivRef.current,
+        wheelRotRef.current,
+        ballIdxRef.current * SEG,
+        R_POCKET
+      )
+    }
+  }, [activeRoom?.status, activeRoom?.game])
+
+  // Cleanup roulette animation frame on unmount
+  useEffect(() => {
+    return () => {
+      cancelAnimationFrame(rouletteRafRef.current)
+    }
+  }, [])
 
   // Realtime Broadcast Sender
   const sendPartyEvent = useCallback((event: string, payload: any) => {
@@ -402,9 +509,7 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
         setRouletteBets((prev) => [...prev, payload])
         sfx.chip()
       } else if (event === 'roulette_spin_start') {
-        setRouletteSpinning(true)
-        setRouletteWinningNum(payload.winningNum)
-        sfx.deal()
+        animateRouletteSpin(payload.winningNum)
       } else if (event === 'roulette_spin_settle') {
         setRouletteSpinning(false)
         setRouletteWinningNum(payload.winningNum)
@@ -1012,7 +1117,7 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
   // ROULETTE HANDLERS
   // -------------------------------------------------------------------------
   const handlePlaceRouletteBet = () => {
-    if (balance < rouletteChipSize) return
+    if (rouletteSpinning || balance < rouletteChipSize) return
     if (!bet(rouletteChipSize, false, 'roulette')) return
     sfx.chip()
 
@@ -1029,15 +1134,14 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
   }
 
   const handleSpinRoulette = () => {
-    if (rouletteSpinning || rouletteBets.length === 0) return
+    if (!isHost || rouletteSpinning || rouletteBets.length === 0) return
     const winning = ROULETTE_WHEEL[Math.floor(Math.random() * ROULETTE_WHEEL.length)]
-    sendPartyEvent('roulette_spin_start', { winningNum: winning })
-    setRouletteSpinning(true)
-    setRouletteWinningNum(winning)
-    sfx.deal()
 
-    // Spin animation duration: 3.5 seconds
-    setTimeout(() => {
+    // Broadcast spin start immediately to all party members
+    sendPartyEvent('roulette_spin_start', { winningNum: winning })
+
+    // Animate wheel on host, then evaluate & broadcast results upon ball landing
+    animateRouletteSpin(winning, () => {
       // Evaluate bets
       const winners: { name: string; amount: number }[] = []
       const isRed = ROULETTE_REDS.has(winning)
@@ -1076,8 +1180,6 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
       }
 
       sendPartyEvent('roulette_spin_settle', { winningNum: winning, winners })
-      setRouletteSpinning(false)
-      setRouletteWinningNum(winning)
       setRouletteLastWinners(winners)
       setRouletteBets([])
       if (winners.some((w) => w.name.toLowerCase() === myName.toLowerCase())) {
@@ -1088,7 +1190,7 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
       } else {
         sfx.win()
       }
-    }, 3500)
+    })
   }
 
   // -------------------------------------------------------------------------
@@ -2124,18 +2226,28 @@ export default function PartyLounge({ onBack }: { onBack: () => void }) {
                       {fmt(sz)}
                     </button>
                   ))}
-                  <button onClick={handlePlaceRouletteBet} className="btn-gold rounded-xl px-5 py-2 text-xs font-black shadow-md">
+                  <button
+                    onClick={handlePlaceRouletteBet}
+                    disabled={rouletteSpinning || balance < rouletteChipSize}
+                    className="btn-gold rounded-xl px-5 py-2 text-xs font-black shadow-md disabled:opacity-40"
+                  >
                     PLACE BET
                   </button>
                 </div>
 
-                <button
-                  onClick={handleSpinRoulette}
-                  disabled={rouletteSpinning || rouletteBets.length === 0}
-                  className="btn-crimson rounded-xl px-7 py-2.5 text-xs font-black shadow-xl disabled:opacity-40"
-                >
-                  {rouletteSpinning ? 'SPINNING...' : 'SPIN WHEEL!'}
-                </button>
+                {isHost ? (
+                  <button
+                    onClick={handleSpinRoulette}
+                    disabled={rouletteSpinning || rouletteBets.length === 0}
+                    className="btn-crimson rounded-xl px-7 py-2.5 text-xs font-black shadow-xl disabled:opacity-40"
+                  >
+                    {rouletteSpinning ? 'SPINNING...' : 'SPIN WHEEL!'}
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-white/10 bg-black/60 px-5 py-2 text-xs font-bold text-gray-400">
+                    {rouletteSpinning ? 'WHEEL IS SPINNING...' : 'WAITING FOR HOST TO SPIN...'}
+                  </div>
+                )}
               </div>
 
               {/* Placed Bets Feed */}
