@@ -308,7 +308,7 @@ export default function CommunityTable({ variant, nav, rules }: { variant: Varia
 
           {advice && (
             <p className="mx-auto mt-2 max-w-md rounded-lg border border-[#c9a227]/25 bg-black/30 px-3 py-2 text-center text-[12px] leading-snug text-[#cbb98a]">
-              <b className="tracking-[0.2em] text-[#f6e27a]">{tokenHint ? 'HINT TOKEN' : 'COACH'}: {advice.action.toUpperCase()}.</b> {advice.why}
+              <b className="tracking-[0.2em] text-[#f6e27a]">{tokenHint ? 'COACH HINT' : 'COACH'}: {advice.action.toUpperCase()}.</b> {advice.why}
             </p>
           )}
 

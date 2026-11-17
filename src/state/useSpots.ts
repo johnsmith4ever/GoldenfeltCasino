@@ -22,7 +22,7 @@ function save(key: string, s: Spots) {
  * The previous round's bets are remembered so a rebet is one tap.
  */
 export function useSpots(storeKey: string, gameId?: string) {
-  const { balance, bet, refund, markHand } = useChips()
+  const { balance, bet, refund, markHand, maxBet } = useChips()
   const [spots, setSpotsState] = useState<Spots>({})
   const [locked, setLocked] = useState(false)
   const [last, setLast] = useState<Spots>(() => load(storeKey))
@@ -34,11 +34,15 @@ export function useSpots(storeKey: string, gameId?: string) {
 
   const add = useCallback((key: string, amount: number): boolean => {
     if (lockedRef.current || amount <= 0) return false
-    if (!bet(amount, false)) return false
-    setSpots({ ...ref.current, [key]: (ref.current[key] ?? 0) + amount })
+    const currentTotal = sum(ref.current)
+    const allowed = Math.max(0, maxBet - currentTotal)
+    if (allowed <= 0) return false
+    const toBet = Math.min(amount, allowed)
+    if (toBet <= 0 || !bet(toBet, false)) return false
+    setSpots({ ...ref.current, [key]: (ref.current[key] ?? 0) + toBet })
     setCarried(false)
     return true
-  }, [bet, setSpots])
+  }, [bet, maxBet, setSpots])
 
   /** Take everything back off the table. */
   const clear = useCallback(() => {
@@ -90,5 +94,5 @@ export function useSpots(storeKey: string, gameId?: string) {
     if (!lockedRef.current) { const t = sum(ref.current); if (t > 0) refund(t) }
   }, [refund])
 
-  return { spots, total: sum(spots), locked, add, clear, clearSpot, lock, reset, last, lastTotal, restore, carried, setCarried, balance }
+  return { spots, total: sum(spots), locked, add, clear, clearSpot, lock, reset, last, lastTotal, restore, carried, setCarried, balance, maxBet }
 }

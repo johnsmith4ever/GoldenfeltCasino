@@ -157,7 +157,7 @@ function betDef(id: string): BetDef {
 /* ---------- Component ---------- */
 
 export default function Roulette() {
-  const { balance, bet, markHand, payout, refund } = useChips()
+  const { balance, bet, markHand, payout, refund, maxBet } = useChips()
   const [chipVal, setChipVal] = useState(25)
   const [bets, setBets] = useState<Bets>({})
   const [spinning, setSpinning] = useState(false)
@@ -184,7 +184,7 @@ export default function Roulette() {
     sfx.chip()
     setBets((b) => ({ ...b, [id]: (b[id] ?? 0) + stake }))
   }
-  const betAll = () => place('red', balance)
+  const betAll = () => place('red', Math.min(balance, Math.max(0, maxBet - totalBet)))
 
   const clearBets = () => {
     if (spinning) return

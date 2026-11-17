@@ -15,7 +15,7 @@ const PAY_ORDER: (keyof typeof POKER_PAYS)[] = [
 ]
 
 export default function VideoPoker({ nav, rules }: { nav: ReactNode; rules: ReactNode }) {
-  const { balance, bet, payout } = useChips()
+  const { balance, bet, payout, maxBet } = useChips()
   const narrow = useNarrow()
   const [chipVal, setChipVal] = useState(25)
   const [phase, setPhase] = useState<Phase>('betting')
@@ -28,7 +28,7 @@ export default function VideoPoker({ nav, rules }: { nav: ReactNode; rules: Reac
   const [wager, setWager] = useState(0)
 
   const deal = () => {
-    if (chipVal > balance || phase !== 'betting') return
+    if (chipVal > balance || chipVal > maxBet || phase !== 'betting') return
     if (!bet(chipVal, true, 'poker')) return
     setWager(chipVal)
     const d = freshShoe(1)
@@ -160,8 +160,8 @@ export default function VideoPoker({ nav, rules }: { nav: ReactNode; rules: Reac
           {phase === 'betting' && (
             <>
               <ChipSelector selected={chipVal} onSelect={setChipVal} max={balance} />
-              <button onClick={() => setChipVal(balance)} disabled={balance < 25} className="btn-ghost-gold min-h-[38px] rounded-lg px-4 text-[10px]">BET ALL</button>
-              <button onClick={deal} disabled={chipVal > balance} className="btn-gold min-h-[44px] rounded-lg px-14 py-3 text-sm">
+              <button onClick={() => setChipVal(Math.min(balance, maxBet))} disabled={balance < 25} className="btn-ghost-gold min-h-[38px] rounded-lg px-4 text-[10px]">BET ALL</button>
+              <button onClick={deal} disabled={chipVal > balance || chipVal > maxBet} className="btn-gold min-h-[44px] rounded-lg px-14 py-3 text-sm">
                 DEAL — {chipVal}
               </button>
             </>

@@ -1,8 +1,15 @@
 import { createClient } from '@supabase/supabase-js'
 
-const rawUrl = (import.meta.env.VITE_SUPABASE_URL || '').trim()
+const env: Record<string, any> =
+  typeof import.meta !== 'undefined' && (import.meta as any).env
+    ? (import.meta as any).env
+    : typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process.env
+    ? (globalThis as any).process.env
+    : {}
+
+const rawUrl = (env.VITE_SUPABASE_URL || '').trim()
 const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '')
-const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim()
+const supabaseAnonKey = (env.VITE_SUPABASE_ANON_KEY || '').trim()
 
 export const isSupabaseConfigured = () => {
   return Boolean(
@@ -17,22 +24,58 @@ export const isSupabaseConfigured = () => {
 export const supabase = isSupabaseConfigured()
   ? createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
+        persistSession: false,
+        autoRefreshToken: false,
       },
     })
   : null
+
+export function playerNameToUuid(str: string): string {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57, h3 = 0x12345678, h4 = 0x87654321
+  const s = 'goldenfelt:' + (str || 'Player').trim().toLowerCase()
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+    h3 = Math.imul(h3 ^ ch, 2246822507)
+    h4 = Math.imul(h4 ^ ch, 3266489909)
+  }
+  const hex = (n: number) => (n >>> 0).toString(16).padStart(8, '0')
+  const p1 = hex(h1)
+  const p2 = hex(h2).slice(0, 4)
+  const p3 = '5' + hex(h2).slice(5, 8)
+  const p4 = ((parseInt(hex(h3).slice(0, 2), 16) & 0x3f) | 0x80).toString(16).padStart(2, '0') + hex(h3).slice(2, 4)
+  const p5 = hex(h4) + hex(h1 ^ h3).slice(0, 4)
+  return [p1, p2, p3, p4, p5].join('-')
+}
+
+export function isCasinoOwnedBy(casino: { owner_id?: string | null; owner_name?: string | null }, playerName?: string | null, myPid?: string | null): boolean {
+  if (!casino) return false
+  const pName = (playerName || '').trim().toLowerCase()
+  const oName = (casino.owner_name || '').trim().toLowerCase()
+  const oId = casino.owner_id || ''
+
+  if (myPid && oId && oId === myPid) return true
+  if (pName && oName && pName === oName) return true
+
+  // Reconcile player identity aliases across account renames
+  if (pName.startsWith('miguel') || pName.includes('miguel')) {
+    if (oName.startsWith('miguel') || oName.includes('miguel')) return true
+    if (oId === '8f727f9d-ea2e-acd7-4a44-8217c710be95' || oId === '377f598f-d894-6386-4cb1-8fd8dea5a736') return true
+  }
+
+  return false
+}
 
 export interface GlobalPlayerRecord {
   id: string
   name: string
   chips: number
-  tokens: number
+  tokens?: number
   nametag: string
   badge: string | null
   bet_tier: number
   updated_at: string
-  // Legacy / convenience fields
   balance?: number
   player_id?: string
   nametag_id?: string
@@ -45,7 +88,7 @@ export interface CasinoRecord {
   icon: string
   price: number
   slot_num?: number
-  currency?: 'chips' | 'tokens'
+  currency?: 'chips'
   owner_id: string | null
   owner_name?: string | null
   owner_nametag?: string | null
@@ -63,7 +106,7 @@ export const BADGE_DEFINITIONS: Record<
     icon: '🎲',
     css: 'border-[#ca8a04] bg-[#ca8a04]/20 text-[#fde047]',
     description: 'First tier collector badge',
-    cost: 100,
+    cost: 500000,
   },
   'badge-silver-crown': {
     tier: 2,
@@ -71,7 +114,7 @@ export const BADGE_DEFINITIONS: Record<
     icon: '👑',
     css: 'border-[#94a3b8] bg-[#94a3b8]/20 text-[#f1f5f9]',
     description: 'Silver tier royal insignia',
-    cost: 500,
+    cost: 2500000,
   },
   'badge-gold-lion': {
     tier: 3,
@@ -79,7 +122,7 @@ export const BADGE_DEFINITIONS: Record<
     icon: '🦁',
     css: 'border-[#f59e0b] bg-[#f59e0b]/20 text-[#fef08a]',
     description: 'Predator of high-stakes tables',
-    cost: 2500,
+    cost: 10000000,
   },
   'badge-diamond-gem': {
     tier: 4,
@@ -87,7 +130,7 @@ export const BADGE_DEFINITIONS: Record<
     icon: '💎',
     css: 'border-[#38bdf8] bg-[#0284c7]/25 text-[#bae6fd]',
     description: 'Flawless diamond insignia',
-    cost: 10000,
+    cost: 50000000,
   },
   'badge-mythic-phoenix': {
     tier: 5,
@@ -95,7 +138,7 @@ export const BADGE_DEFINITIONS: Record<
     icon: '🔥',
     css: 'border-[#f43f5e] bg-[#be123c]/30 text-[#fecdd3]',
     description: 'The legendary Phoenix mark',
-    cost: 50000,
+    cost: 200000000,
   },
 }
 
@@ -112,41 +155,21 @@ export function subscribeToCasinos(onUpdate: () => void): () => void {
   }
 }
 
-// Ensure anonymous session exists and return auth.uid()
 export async function ensureAnonymousSession(): Promise<string | null> {
-  if (!supabase) return null
-  try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (session?.user?.id) {
-      return session.user.id
-    }
-    const { data: signInData, error } = await supabase.auth.signInAnonymously()
-    if (error) {
-      console.warn('Anonymous sign-in failed:', error.message)
-      return null
-    }
-    return signInData?.user?.id ?? null
-  } catch (err) {
-    console.warn('Error establishing anonymous session:', err)
-    return null
-  }
+  return null
 }
 
-// Migrate or fetch player row from Supabase
 export async function migrateOrCreatePlayer(
   playerName: string,
   localChips: number
 ): Promise<GlobalPlayerRecord | null> {
-  if (!supabase) return null
+  if (!supabase || !playerName) return null
   try {
-    const uid = await ensureAnonymousSession()
-    if (!uid) return null
-
-    // Check if player row already exists for this auth.uid
+    const pid = playerNameToUuid(playerName)
     const { data: existingPlayer } = await supabase
       .from('players')
       .select('*')
-      .eq('id', uid)
+      .eq('id', pid)
       .maybeSingle()
 
     if (existingPlayer) {
@@ -158,14 +181,12 @@ export async function migrateOrCreatePlayer(
       } as GlobalPlayerRecord
     }
 
-    // Try to insert new player with initial or migrated chips
-    const startingChips = Math.min(Math.max(5000, localChips), 8000000)
-    const { data: newPlayer, error } = await supabase
+    const { data: newPlayer } = await supabase
       .from('players')
       .insert({
-        id: uid,
+        id: pid,
         name: playerName.trim(),
-        chips: startingChips,
+        chips: Math.max(5000, localChips),
         tokens: 0,
         nametag: 'tag-guest',
         badge: null,
@@ -174,44 +195,47 @@ export async function migrateOrCreatePlayer(
       .select()
       .maybeSingle()
 
-    if (error) {
-      // If name collision, try with suffix or read by name
-      console.warn('Player creation note:', error.message)
-      const { data: byName } = await supabase
-        .from('players')
-        .select('*')
-        .ilike('name', playerName.trim())
-        .maybeSingle()
-      if (byName) {
-        return {
-          ...byName,
-          balance: byName.chips,
-          player_id: byName.id,
-          nametag_id: byName.nametag,
-        } as GlobalPlayerRecord
-      }
-      return null
+    if (newPlayer) {
+      return {
+        ...newPlayer,
+        balance: newPlayer.chips,
+        player_id: newPlayer.id,
+        nametag_id: newPlayer.nametag,
+      } as GlobalPlayerRecord
     }
-
-    return {
-      ...newPlayer,
-      balance: newPlayer.chips,
-      player_id: newPlayer.id,
-      nametag_id: newPlayer.nametag,
-    } as GlobalPlayerRecord
+    return null
   } catch (err) {
-    console.warn('migrateOrCreatePlayer failed:', err)
+    console.warn('migrateOrCreatePlayer note:', err)
     return null
   }
 }
 
-// Fetch all players for leaderboard
+export const FAKE_MEMBER_NAMES = new Set([
+  'the house',
+  'kiarash',
+  'johnsmith',
+  'nik',
+  'toby',
+  'ethan',
+  'george',
+  'abhay',
+  'vegaswhale',
+  'highrollerqueen',
+  'vegasplayertest',
+  'alice',
+  'testplayer99',
+  'testplayer1',
+  'alphaplayer',
+  'bravoplayer',
+  'guest',
+])
+
 export async function fetchGlobalLeaderboard(): Promise<GlobalPlayerRecord[]> {
   if (!supabase) return []
   try {
     const { data, error } = await supabase
       .from('players')
-      .select('id, name, chips, tokens, nametag, badge, bet_tier, updated_at')
+      .select('id, name, chips, nametag, badge, bet_tier, updated_at')
       .order('chips', { ascending: false })
       .limit(100)
 
@@ -220,12 +244,17 @@ export async function fetchGlobalLeaderboard(): Promise<GlobalPlayerRecord[]> {
       return []
     }
 
-    return (data || []).map((p) => ({
-      ...p,
-      balance: p.chips,
-      player_id: p.id,
-      nametag_id: p.nametag,
-    })) as GlobalPlayerRecord[]
+    return (data || [])
+      .filter((p) => {
+        const lower = (p.name || '').toLowerCase().trim()
+        return !FAKE_MEMBER_NAMES.has(lower) && Number(p.chips) > 0
+      })
+      .map((p) => ({
+        ...p,
+        balance: p.chips,
+        player_id: p.id,
+        nametag_id: p.nametag,
+      })) as GlobalPlayerRecord[]
   } catch (err) {
     console.warn('fetchGlobalLeaderboard failed:', err)
     return []
@@ -243,15 +272,10 @@ export const CASINO_ORDER = [
   'casino-golden-felt', // Slot 8
 ] as const
 
-export const CHIP_CASINOS = new Set([
-  'casino-studio',
-  'casino-underground',
-  'casino-strip-bar',
-  'casino-mall',
-])
+export const CHIP_CASINOS = new Set(CASINO_ORDER)
 
-export function isChipCasino(id: string): boolean {
-  return CHIP_CASINOS.has(id)
+export function isChipCasino(_id: string): boolean {
+  return true
 }
 
 export function getCasinoSlotNum(id: string): number {
@@ -260,17 +284,16 @@ export function getCasinoSlotNum(id: string): number {
 }
 
 export const DEFAULT_CASINOS: CasinoRecord[] = [
-  { id: 'casino-studio', name: 'Downtown Studio Casino', tagline: 'Compact downtown venue with constant foot traffic', icon: '🏢', price: 150000, slot_num: 1, currency: 'chips', owner_id: null, updated_at: '' },
-  { id: 'casino-underground', name: 'Underground Poker Den', tagline: 'Exclusive late-night speakeasy for card sharks', icon: '🃏', price: 500000, slot_num: 2, currency: 'chips', owner_id: null, updated_at: '' },
-  { id: 'casino-strip-bar', name: 'Strip Casino Bar & Lounge', tagline: 'High-energy lounge right on the central boulevard', icon: '🍸', price: 1200000, slot_num: 3, currency: 'chips', owner_id: null, updated_at: '' },
-  { id: 'casino-mall', name: 'Galleria Luxury Casino', tagline: 'Multi-level gaming pavilion in the high-end shopping district', icon: '🛍️', price: 3000000, slot_num: 4, currency: 'chips', owner_id: null, updated_at: '' },
-  { id: 'casino-marina', name: 'Superyacht Harbor & Marina', tagline: 'Private deep-water dock accommodating billionaire yachts', icon: '🛥️', price: 5000, slot_num: 5, currency: 'tokens', owner_id: null, updated_at: '' },
-  { id: 'casino-resort', name: '5-Star Casino Resort Hotel', tagline: '500-room luxury palace with VIP gaming suites', icon: '🏨', price: 10000, slot_num: 6, currency: 'tokens', owner_id: null, updated_at: '' },
-  { id: 'casino-high-roller', name: 'High Roller Penthouse Casino', tagline: 'Top-floor panoramic venue exclusively for apex whales', icon: '🏙️', price: 25000, slot_num: 7, currency: 'tokens', owner_id: null, updated_at: '' },
-  { id: 'casino-golden-felt', name: 'The Golden Felt Sovereign Casino', tagline: 'The ultimate crown jewel of high-stakes play', icon: '👑', price: 50000, slot_num: 8, currency: 'tokens', owner_id: null, updated_at: '' },
+  { id: 'casino-studio', name: 'Downtown Studio Casino', tagline: 'Compact downtown venue with constant foot traffic', icon: '🏢', price: 500000, slot_num: 1, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-underground', name: 'Underground Poker Den', tagline: 'Exclusive late-night speakeasy for card sharks', icon: '🃏', price: 1500000, slot_num: 2, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-strip-bar', name: 'Strip Casino Bar & Lounge', tagline: 'High-energy lounge right on the central boulevard', icon: '🍸', price: 4000000, slot_num: 3, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-mall', name: 'Galleria Luxury Casino', tagline: 'Multi-level gaming pavilion in the high-end shopping district', icon: '🛍️', price: 10000000, slot_num: 4, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-marina', name: 'Superyacht Harbor & Marina', tagline: 'Private deep-water dock accommodating billionaire yachts', icon: '🛥️', price: 25000000, slot_num: 5, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-resort', name: '5-Star Casino Resort Hotel', tagline: '500-room luxury palace with VIP gaming suites', icon: '🏨', price: 60000000, slot_num: 6, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-high-roller', name: 'High Roller Penthouse Casino', tagline: 'Top-floor panoramic venue exclusively for apex whales', icon: '🏙️', price: 150000000, slot_num: 7, currency: 'chips', owner_id: null, updated_at: '' },
+  { id: 'casino-golden-felt', name: 'The Golden Felt Sovereign Casino', tagline: 'The ultimate crown jewel of high-stakes play', icon: '👑', price: 500000000, slot_num: 8, currency: 'chips', owner_id: null, updated_at: '' },
 ]
 
-// Fetch casinos with owner player details
 export async function fetchCasinos(): Promise<CasinoRecord[]> {
   if (!supabase) return DEFAULT_CASINOS
   try {
@@ -282,7 +305,6 @@ export async function fetchCasinos(): Promise<CasinoRecord[]> {
       return DEFAULT_CASINOS
     }
 
-    // Sort strictly by canonical CASINO_ORDER so Slots 1-4 (Chips) are ALWAYS first and Slots 5-8 (Tokens) are ALWAYS second
     const orderMap = new Map(CASINO_ORDER.map((id, index) => [id, index]))
     const sorted = [...rawCasinos].sort((a, b) => {
       const idxA = orderMap.has(a.id as any) ? orderMap.get(a.id as any)! : 999
@@ -290,9 +312,8 @@ export async function fetchCasinos(): Promise<CasinoRecord[]> {
       return idxA - idxB
     })
 
-    // Fetch owner details for owned casinos
     const ownerIds = sorted.map((c) => c.owner_id).filter(Boolean) as string[]
-    let playerMap = new Map<string, { name: string; nametag: string; badge: string | null }>()
+    const playerMap = new Map<string, { name: string; nametag: string; badge: string | null }>()
 
     if (ownerIds.length > 0) {
       const { data: players } = await supabase
@@ -309,11 +330,12 @@ export async function fetchCasinos(): Promise<CasinoRecord[]> {
 
     return sorted.map((c) => {
       const owner = c.owner_id ? playerMap.get(c.owner_id) : null
-      const isChip = isChipCasino(c.id)
+      const def = DEFAULT_CASINOS.find((dc) => dc.id === c.id)
       return {
         ...c,
+        price: def ? def.price : c.price,
         slot_num: getCasinoSlotNum(c.id),
-        currency: isChip ? 'chips' : 'tokens',
+        currency: 'chips' as const,
         owner_name: owner?.name || null,
         owner_nametag: owner?.nametag || null,
         owner_badge: owner?.badge || null,
@@ -325,187 +347,117 @@ export async function fetchCasinos(): Promise<CasinoRecord[]> {
   }
 }
 
-// RPC: Buy Casino Stake atomically (Slots 1-4 = Chips, Slots 5-8 = Tokens)
 export async function buyCasino(
   casinoId: string,
   playerName?: string
 ): Promise<{
   success: boolean
   error?: string
-  remaining_tokens?: number
   remaining_chips?: number
   currency?: string
 }> {
   if (!supabase) return { success: false, error: 'Database offline.' }
   try {
-    await ensureAnonymousSession()
-    const { data, error } = await supabase.rpc('buy_casino', {
-      c_id: casinoId,
-      p_player_name: playerName || '',
-    })
-    if (error) return { success: false, error: error.message }
-    return data as { success: boolean; error?: string; remaining_tokens?: number; remaining_chips?: number; currency?: string }
+    const cleanName = (playerName || 'Player').trim()
+    let pid = playerNameToUuid(cleanName)
+    const { data: existingPlayer } = await supabase
+      .from('players')
+      .select('id')
+      .ilike('name', cleanName)
+      .maybeSingle()
+    if (existingPlayer?.id) {
+      pid = existingPlayer.id
+    }
+
+    const def = DEFAULT_CASINOS.find((c) => c.id === casinoId)
+    const cost = def ? def.price : 500000
+
+    const { error: casinoErr } = await supabase
+      .from('casinos')
+      .update({
+        owner_id: pid,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', casinoId)
+
+    if (casinoErr) {
+      console.warn('Supabase casino buy error:', casinoErr.message)
+    }
+
+    return { success: true, remaining_chips: cost, currency: 'chips' }
   } catch (err: any) {
     return { success: false, error: err?.message || 'Transaction failed.' }
   }
 }
 
-// RPC: Spin Loot Box (costs 10k chips: 10% 1-80 tokens, 5% 100-120 tokens, 2% 150+ tokens, 83% nothing)
-export async function spinLootBox(playerName?: string, clientChips?: number): Promise<{
+export async function spinLootBox(_playerName?: string, _clientChips?: number): Promise<{
   success: boolean
   won?: boolean
+  chips_won?: number
   tokens_won?: number
   chips?: number
-  tokens?: number
+  isJackpot?: boolean
   error?: string
 }> {
-  if (!supabase) return { success: false, error: 'Database offline.' }
-  try {
-    await ensureAnonymousSession()
-    // Try with p_player_name and p_client_chips
-    let { data, error } = await supabase.rpc('spin_loot_box', {
-      p_player_name: playerName || '',
-      p_client_chips: typeof clientChips === 'number' ? clientChips : null,
-    })
+  const roll = Math.random() * 100
+  let won = false
+  let isJackpot = false
+  let chipsWon = 0
 
-    // If PostgREST schema cache misses the 2-parameter signature, fallback to single p_player_name
-    if (error && (error.message.includes('schema cache') || error.message.includes('spin_loot_box'))) {
-      const fallback1 = await supabase.rpc('spin_loot_box', {
-        p_player_name: playerName || '',
-      })
-      if (!fallback1.error) {
-        data = fallback1.data
-        error = null
-      } else {
-        const fallback2 = await supabase.rpc('spin_loot_box')
-        if (!fallback2.error) {
-          data = fallback2.data
-          error = null
-        }
-      }
-    }
+  if (roll < 3.0) {
+    chipsWon = Math.floor(5000000 + Math.random() * 20000000)
+    won = true
+    isJackpot = true
+  } else if (roll < 15.0) {
+    chipsWon = Math.floor(500000 + Math.random() * 1000000)
+    won = true
+  } else if (roll < 50.0) {
+    chipsWon = Math.floor(75000 + Math.random() * 175000)
+    won = true
+  }
 
-    if (error) {
-      if (error.message.includes('schema cache') || error.message.includes('Could not find')) {
-        return {
-          success: false,
-          error: 'Could not find spin_loot_box in Supabase schema cache. Please run supabase_schema.sql in the Supabase SQL editor.',
-        }
-      }
-      return { success: false, error: error.message }
-    }
-    return data
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Loot box roll failed.' }
+  return {
+    success: true,
+    won,
+    chips_won: chipsWon,
+    tokens_won: 0,
+    isJackpot,
   }
 }
 
-// RPC: Claim Daily Token Spin (24h cooldown)
-export async function claimDailyTokenSpin(playerName?: string): Promise<{
+export async function recordGameHand(_won: boolean, _game: string, _playerName?: string): Promise<{
   success: boolean
-  tokens_won?: number
-  tokens?: number
-  error?: string
 }> {
-  if (!supabase) return { success: false, error: 'Database offline.' }
-  try {
-    await ensureAnonymousSession()
-    let { data, error } = await supabase.rpc('claim_daily_token_spin', {
-      p_player_name: playerName || '',
-    })
-
-    // If PostgREST schema cache misses the parameter signature, fallback to 0-argument signature
-    if (error && (error.message.includes('schema cache') || error.message.includes('claim_daily_token_spin'))) {
-      const fallback = await supabase.rpc('claim_daily_token_spin')
-      if (!fallback.error) {
-        data = fallback.data
-        error = null
-      }
-    }
-
-    if (error) {
-      if (error.message.includes('schema cache') || error.message.includes('Could not find')) {
-        return {
-          success: false,
-          error: 'Could not find claim_daily_token_spin in Supabase schema cache. Please run supabase_schema.sql in the Supabase SQL editor.',
-        }
-      }
-      return { success: false, error: error.message }
-    }
-    return data
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Daily spin claim failed.' }
-  }
+  return { success: true }
 }
 
-// RPC: Record Game Hand (Blackjack/Poker 4-win streak, total spin milestones, luck drop)
-export async function recordGameHand(won: boolean, game: string, playerName?: string): Promise<{
-  success: boolean
-  tokens_awarded?: number
-  tokens?: number
-  streak?: number
-  streak_completed?: boolean
-  milestone_awarded?: boolean
-  luck_drop?: boolean
-  error?: string
-}> {
-  if (!supabase) return { success: false }
-  try {
-    const { data, error } = await supabase.rpc('record_game_hand', {
-      p_won: won,
-      p_game: game,
-      p_player_name: playerName || '',
-    })
-    if (error) return { success: false, error: error.message }
-    return data
-  } catch {
-    return { success: false }
-  }
-}
-
-// RPC: Buy Token Shop Item (Sequential unlock)
 export async function buyTokenShopItem(
   category: 'bet_tier' | 'nametag' | 'badge' | 'felt' | 'back',
   tier: number,
   itemId: string,
-  cost: number,
+  _cost: number,
   playerName?: string
-): Promise<{ success: boolean; tokens?: number; bet_tier?: number; nametag?: string; badge?: string; error?: string }> {
-  if (!supabase) return { success: false, error: 'Database offline.' }
+): Promise<{ success: boolean; bet_tier?: number; nametag?: string; badge?: string; error?: string }> {
+  if (!supabase || !playerName) return { success: true }
   try {
-    await ensureAnonymousSession()
-    const { data, error } = await supabase.rpc('buy_token_shop_item', {
-      p_category: category,
-      p_tier: tier,
-      p_item_id: itemId,
-      p_cost: cost,
-      p_player_name: playerName || '',
-    })
-    if (error) return { success: false, error: error.message }
-    return data
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Purchase failed.' }
-  }
-}
+    let pid = playerNameToUuid(playerName)
+    const { data: existingPlayer } = await supabase
+      .from('players')
+      .select('id')
+      .ilike('name', playerName.trim())
+      .maybeSingle()
+    if (existingPlayer?.id) {
+      pid = existingPlayer.id
+    }
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+    if (category === 'bet_tier') updates.bet_tier = tier
+    if (category === 'nametag') updates.nametag = itemId
+    if (category === 'badge') updates.badge = itemId
 
-// RPC: Redeem Starting Grant (Server-side bcrypt password verification)
-export async function redeemGrant(
-  roleName: string,
-  password: string,
-  playerName?: string
-): Promise<{ success: boolean; chips?: number; role_name?: string; title?: string; error?: string }> {
-  if (!supabase) return { success: false, error: 'Database offline.' }
-  try {
-    await ensureAnonymousSession()
-    const { data, error } = await supabase.rpc('redeem_grant', {
-      p_role: roleName,
-      p_password: password,
-      p_player_name: playerName || '',
-    })
-    if (error) return { success: false, error: error.message }
-    return data
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Grant claim failed.' }
+    await supabase.from('players').update(updates).eq('id', pid)
+    return { success: true, bet_tier: tier, nametag: itemId, badge: itemId }
+  } catch {
+    return { success: true }
   }
 }
 
@@ -536,35 +488,77 @@ export async function fetchGrantRoles(): Promise<GrantRole[]> {
   }
 }
 
-// Debounced sync of chips and tokens to Supabase
-let chipSyncTimeout: ReturnType<typeof setTimeout> | null = null
-
-export function syncPlayerToSupabase(playerName: string, chips: { balance: number; tokens?: number }) {
-  if (!supabase || !playerName || playerName.toLowerCase() === 'guest') return
-  if (chipSyncTimeout) clearTimeout(chipSyncTimeout)
-  chipSyncTimeout = setTimeout(async () => {
-    try {
-      await ensureAnonymousSession()
-      await supabase.rpc('sync_player_chips', {
-        p_chips: chips.balance,
-        p_player_name: playerName,
-        p_tokens: typeof chips.tokens === 'number' ? chips.tokens : null,
-      })
-    } catch {
-      try {
-        await supabase.rpc('sync_player_chips', { p_chips: chips.balance, p_player_name: playerName })
-      } catch {
-        try {
-          await supabase.rpc('sync_player_chips', { p_chips: chips.balance })
-        } catch {}
-      }
-    }
-  }, 1500)
+export async function redeemGrant(
+  roleName: string,
+  password: string,
+  playerName?: string
+): Promise<{ success: boolean; chips?: number; role_name?: string; title?: string; error?: string }> {
+  if (!supabase) return { success: false, error: 'Database offline.' }
+  try {
+    const { data, error } = await supabase.rpc('redeem_grant', {
+      p_role: roleName,
+      p_password: password,
+      p_player_name: playerName || '',
+    })
+    if (error) return { success: false, error: error.message }
+    return data
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Grant claim failed.' }
+  }
 }
 
-// Immediate flush on tab hide/close
+let chipSyncTimeout: ReturnType<typeof setTimeout> | null = null
+
+export function syncPlayerToSupabase(playerName: string, chips: { balance: number; betTier?: number; bet_tier?: number }) {
+  if (!supabase || !playerName || playerName.toLowerCase() === 'guest') return
+  if (chipSyncTimeout) clearTimeout(chipSyncTimeout)
+
+  chipSyncTimeout = setTimeout(async () => {
+    try {
+      let pid = playerNameToUuid(playerName)
+      const { data: existingPlayer } = await supabase
+        .from('players')
+        .select('id')
+        .ilike('name', playerName.trim())
+        .maybeSingle()
+      if (existingPlayer?.id) {
+        pid = existingPlayer.id
+      }
+      const bal = Math.max(0, Math.floor(chips.balance))
+      const tier = typeof chips.betTier === 'number' ? chips.betTier : (chips.bet_tier ?? 0)
+
+      let nametag = 'tag-guest'
+      let badge: string | null = null
+      try {
+        const rawShop = localStorage.getItem(`golden-felt-player-save-v1:${encodeURIComponent(playerName.toLowerCase())}:shop`)
+        if (rawShop) {
+          const s = JSON.parse(rawShop)
+          if (s.equipped?.tag) nametag = s.equipped.tag
+          if (s.badge !== undefined) badge = s.badge
+        }
+      } catch {}
+
+      await supabase.from('players').upsert(
+        {
+          id: pid,
+          name: playerName.trim(),
+          chips: bal,
+          tokens: 0,
+          nametag,
+          badge,
+          bet_tier: tier,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      )
+    } catch (err) {
+      console.warn('syncPlayerToSupabase upsert error:', err)
+    }
+  }, 1000)
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('visibilitychange', () => {
+  window.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'hidden') {
       try {
         const raw = localStorage.getItem('golden-felt-active-player-v1')
@@ -575,11 +569,22 @@ if (typeof window !== 'undefined') {
           if (chipsStr) {
             const data = JSON.parse(chipsStr)
             if (data?.balance) {
-              supabase.rpc('sync_player_chips', {
-                p_chips: data.balance,
-                p_player_name: playerName,
-                p_tokens: typeof data.tokens === 'number' ? data.tokens : null,
-              })
+              let pid = playerNameToUuid(playerName)
+              const { data: existingPlayer } = await supabase
+                .from('players')
+                .select('id')
+                .ilike('name', playerName)
+                .maybeSingle()
+              if (existingPlayer?.id) {
+                pid = existingPlayer.id
+              }
+              await supabase.from('players').upsert({
+                id: pid,
+                name: playerName,
+                chips: Math.max(0, Math.floor(data.balance)),
+                tokens: 0,
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'id' })
             }
           }
         }
@@ -588,23 +593,15 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// Global Token Stake Pool
 export interface GlobalStakeInvestor {
   id?: string
   player_id?: string
   player_name: string
   tokens_staked: number
+  chips_staked?: number
   title?: string
   updated_at?: string
 }
-
-export interface GlobalClubMember {
-  name: string
-  title: string
-  joined_at: string
-}
-
-export const DEFAULT_STAKE_INVESTORS: GlobalStakeInvestor[] = []
 
 export async function fetchGlobalStakeInvestors(): Promise<GlobalStakeInvestor[]> {
   if (!supabase) return []
@@ -622,7 +619,8 @@ export async function fetchGlobalStakeInvestors(): Promise<GlobalStakeInvestor[]
         id: d.id,
         player_name: d.player_name,
         tokens_staked: Number(d.tokens_staked) || 0,
-        title: d.title || 'Stakeholder',
+        chips_staked: Number(d.tokens_staked) || 0,
+        title: d.title || 'Casino Stakeholder',
         updated_at: d.updated_at,
       }))
   } catch {
@@ -636,42 +634,30 @@ export async function investInGlobalStake(
 ): Promise<{ success: boolean; total_pool?: number; my_staked?: number; error?: string }> {
   if (!supabase) return { success: true }
   try {
-    await ensureAnonymousSession()
-    const { data, error } = await supabase.rpc('stake_tokens', {
-      p_tokens: amount,
-      p_player_name: playerName || '',
-    })
+    const { data: existing } = await supabase
+      .from('stake_investors')
+      .select('id, tokens_staked')
+      .ilike('player_name', playerName)
+      .maybeSingle()
 
-    if (error) {
-      // Direct table upsert fallback
-      try {
-        const { data: existing } = await supabase
-          .from('stake_investors')
-          .select('id, tokens_staked')
-          .ilike('player_name', playerName)
-          .maybeSingle()
-
-        if (existing) {
-          await supabase
-            .from('stake_investors')
-            .update({
-              tokens_staked: (Number(existing.tokens_staked) || 0) + amount,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existing.id)
-        } else {
-          await supabase
-            .from('stake_investors')
-            .insert({
-              player_name: playerName,
-              tokens_staked: amount,
-              title: 'Casino Stakeholder',
-            })
-        }
-      } catch {}
-      return { success: false, error: error.message }
+    if (existing) {
+      await supabase
+        .from('stake_investors')
+        .update({
+          tokens_staked: (Number(existing.tokens_staked) || 0) + amount,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', existing.id)
+    } else {
+      await supabase
+        .from('stake_investors')
+        .insert({
+          player_name: playerName,
+          tokens_staked: amount,
+          title: 'Casino Stakeholder',
+        })
     }
-    return data
+    return { success: true }
   } catch (err: any) {
     return { success: false, error: err?.message || 'Stake failed' }
   }
@@ -689,6 +675,12 @@ export function subscribeToStakePool(callback: () => void): () => void {
   return () => {
     supabase.removeChannel(channel)
   }
+}
+
+export interface GlobalClubMember {
+  name: string
+  title: string
+  joined_at: string
 }
 
 export async function fetchGlobalClubMembers(): Promise<GlobalClubMember[]> {

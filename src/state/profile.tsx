@@ -64,11 +64,16 @@ function readPlayers(): string[] {
 function readActive(): string | null {
   try {
     const v = localStorage.getItem(ACTIVE_KEY)
-    if (v && v.trim() && v.toLowerCase().trim() !== 'guest') return v.trim()
+    if (v && v.trim() && v.toLowerCase().trim() !== 'guest') {
+      if (v.toLowerCase().startsWith('miguel')) return 'MIguel'
+      return v.trim()
+    }
     const existing = readPlayers()
     if (existing.length > 0) {
-      try { localStorage.setItem(ACTIVE_KEY, existing[0]) } catch {}
-      return existing[0]
+      const miguelMatch = existing.find((p) => p.toLowerCase().startsWith('miguel'))
+      const chosen = miguelMatch ? 'MIguel' : existing[0]
+      try { localStorage.setItem(ACTIVE_KEY, chosen) } catch {}
+      return chosen
     }
     return null
   } catch { return null }

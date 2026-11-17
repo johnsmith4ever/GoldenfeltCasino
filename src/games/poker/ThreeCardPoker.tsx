@@ -30,7 +30,7 @@ const PP_ROWS: [string, number][] = [
 const BONUS_ROWS: [string, number][] = [['Straight Flush', ANTE_BONUS[5]], ['Three of a Kind', ANTE_BONUS[4]], ['Straight', ANTE_BONUS[3]]]
 
 export default function ThreeCardPoker({ nav, rules }: { nav: ReactNode; rules: ReactNode }) {
-  const { balance, bet, markHand, payout, refund } = useChips()
+  const { balance, bet, markHand, payout, refund, maxBet } = useChips()
   const narrow = useNarrow()
   const [phase, setPhase] = useState<Phase>('betting')
   const [ante, setAnte] = useState(0)
@@ -51,7 +51,7 @@ export default function ThreeCardPoker({ nav, rules }: { nav: ReactNode; rules: 
   }, [refund])
 
   const addChip = (v: number) => {
-    if (phase !== 'betting' || v > balance) return
+    if (phase !== 'betting' || v > balance || (ante + pp + v) > maxBet) return
     if (!bet(v, false)) return
     sfx.chip()
     if (target === 'ante') setAnte((a) => a + v)
@@ -66,8 +66,9 @@ export default function ThreeCardPoker({ nav, rules }: { nav: ReactNode; rules: 
     sfx.click()
   }
   const betAll = () => {
-    // Keep enough chips behind to make the mandatory Play bet at deal time.
-    const amount = Math.floor(Math.max(0, (balance - ante) / 2))
+    // Keep enough chips behind to make the mandatory Play bet at deal time, and respect maxBet.
+    const cap = Math.min(balance, maxBet)
+    const amount = Math.floor(Math.max(0, (cap - ante - pp) / 2))
     if (amount <= 0 || !bet(amount, false)) return
     setAnte((v) => v + amount)
     setTarget('ante')

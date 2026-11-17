@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowLeft, ShoppingBag, Volume2, VolumeX, Banknote, Trophy, Dices, Building2, Crown, Sparkles } from 'lucide-react'
+import { ArrowLeft, ShoppingBag, Volume2, VolumeX, Banknote, Trophy, Dices, Building2, Crown, Wine } from 'lucide-react'
 import { useChips, fmt } from '../state/chips'
 import { usePlayer } from '../state/profile'
 import { sfx, setMuted, isMuted } from '../lib/audio'
@@ -7,36 +7,28 @@ import { Chip } from './Chip'
 import { Nametag } from './Nametag'
 import { ITEMS_BY_ID, msUntilClaim, useNow, useShop } from '../state/shop'
 
-export type Screen = 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard' | 'blackjack' | 'roulette' | 'slots' | 'craps' | 'poker' | 'baccarat' | 'sicbo' | 'war' | 'highlow' | 'keno' | 'rocket' | 'wheel' | 'dice' | 'coinflip'
-export type GameId = Exclude<Screen, 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard'>
+export type Screen = 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard' | 'party' | 'blackjack' | 'roulette' | 'slots' | 'craps' | 'poker' | 'baccarat'
+export type GameId = Exclude<Screen, 'lobby' | 'shop' | 'properties' | 'club' | 'bank' | 'leaderboard' | 'party'>
 
 export const GAME_META: Record<GameId, { title: string; tagline: string; felt: string }> = {
-  blackjack: { title: 'Blackjack', tagline: 'Beat the dealer to 21', felt: 'felt-green' },
-  roulette: { title: 'Roulette', tagline: 'European single-zero wheel', felt: 'felt-noir' },
-  slots: { title: 'Grand Slots', tagline: 'Three reels of fortune', felt: 'felt-red' },
-  craps: { title: 'Craps', tagline: 'Roll the bones', felt: 'felt-red' },
-  poker: { title: 'Poker Room', tagline: 'Five ways to play', felt: 'felt-green' },
-  baccarat: { title: 'Baccarat', tagline: 'Player, Banker or Tie', felt: 'felt-green' },
-  sicbo: { title: 'Sic Bo', tagline: 'Three dice, many bets', felt: 'felt-red' },
-  war: { title: 'Casino War', tagline: 'High card wins', felt: 'felt-green' },
-  highlow: { title: 'High-Low', tagline: 'Higher or lower?', felt: 'felt-noir' },
-  keno: { title: 'Keno', tagline: 'Pick your numbers', felt: 'felt-red' },
-  rocket: { title: 'Rocket Crash (Decommissioned)', tagline: 'Game closed to prevent hyperinflation', felt: 'felt-noir' },
-  wheel: { title: 'Lucky Wheel', tagline: 'Admin Pre-Release · Multiplier Wheel (10x, 5x, 2x, 1.5x)', felt: 'felt-noir' },
-  dice: { title: 'Lucky Dice', tagline: 'Admin Pre-Release · High or Low 1.95x', felt: 'felt-red' },
-  coinflip: { title: 'Coin Flip', tagline: 'Admin Pre-Release · Heads or Tails 1.95x', felt: 'felt-noir' },
+  blackjack: { title: 'Private VIP Blackjack', tagline: 'Private VIP Salon · Beat the dealer to 21', felt: 'felt-green' },
+  roulette: { title: 'Private European Roulette', tagline: 'Private VIP Salon · Single-zero European wheel', felt: 'felt-noir' },
+  slots: { title: 'Private Grand Slots', tagline: 'Private VIP Salon · Three gilded reels of fortune', felt: 'felt-red' },
+  craps: { title: 'Private High Roller Craps', tagline: 'Private VIP Table · Roll the bones with true odds', felt: 'felt-red' },
+  poker: { title: 'Private Poker Room', tagline: 'Private VIP Lounge · Hold\'em, Omaha, Stud & Video', felt: 'felt-green' },
+  baccarat: { title: 'Private VIP Baccarat', tagline: 'Private VIP Salon · Player, Banker or Tie', felt: 'felt-green' },
 }
 
 /* ---------- Header ---------- */
 
-export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderboard, screen, playerName }: { onHome: () => void; onShop: () => void; onProperties: () => void; onClub: () => void; onBank: () => void; onLeaderboard: () => void; screen: Screen; playerName: string }) {
-  const { balance, tokens, storageError: walletStorageError } = useChips()
+export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderboard, onParty, screen, playerName }: { onHome: () => void; onShop: () => void; onProperties: () => void; onClub: () => void; onBank: () => void; onLeaderboard: () => void; onParty?: () => void; screen: Screen; playerName: string }) {
+  const { balance, storageError: walletStorageError } = useChips()
   const { players, switchPlayer } = usePlayer()
   const { lastClaim, storageError: shopStorageError } = useShop()
   const now = useNow(15000)
   const giftReady = msUntilClaim(lastClaim, now) === 0
   const [muted, setMutedState] = useState(isMuted())
-  const isGame = screen !== 'lobby' && screen !== 'shop' && screen !== 'properties' && screen !== 'club' && screen !== 'bank' && screen !== 'leaderboard'
+  const isGame = screen !== 'lobby' && screen !== 'shop' && screen !== 'properties' && screen !== 'club' && screen !== 'bank' && screen !== 'leaderboard' && screen !== 'party'
 
   const toggleMute = () => {
     const m = !muted
@@ -63,13 +55,10 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
 
         <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {(walletStorageError || shopStorageError) && <span title={walletStorageError || shopStorageError} className="rounded border border-[#d4002a]/60 bg-[#2a050a]/70 px-1.5 py-0.5 text-[8px] font-bold text-[#ff97a3]">SAVE ISSUE</span>}
-          <div className="flex items-center gap-1.5 rounded-full border border-[#c9a227]/40 bg-black/50 py-0.5 pl-1 pr-2.5 shrink-0" title="Chips Balance">
+          <div className="flex items-center gap-1.5 rounded-full border border-[#c9a227]/50 bg-black/60 py-1 pl-1.5 pr-3 shrink-0" title="Chips Balance">
             <Chip value={1000} size={22} label="GF" />
             <span className="font-display text-[13px] font-bold text-[#f6e27a] tabular-nums">{fmt(balance)}</span>
-          </div>
-          <div className="flex items-center gap-1.5 rounded-full border border-[#38bdf8]/40 bg-[#071829]/70 py-0.5 pl-2 pr-2.5 shrink-0" title="Tokens (Scarce Currency)">
-            <Sparkles size={13} className="text-[#38bdf8]" />
-            <span className="font-display text-[13px] font-bold text-[#7dd3fc] tabular-nums">{fmt(tokens)}</span>
+            <span className="text-[9px] tracking-widest text-[#8a7a4d] font-bold hidden sm:inline">CHIPS</span>
           </div>
           <button
             onClick={() => { sfx.click(); onHome() }}
@@ -116,6 +105,20 @@ export function Header({ onHome, onShop, onProperties, onClub, onBank, onLeaderb
           >
             <Trophy size={13} /><span className="hidden sm:inline">RANKS</span>
           </button>
+          {onParty && (
+            <button
+              onClick={() => { sfx.click(); onParty() }}
+              className={`btn-ghost-gold relative flex min-h-[32px] items-center gap-1.5 rounded-full px-3 py-1 text-[10px] shrink-0 ${screen === 'party' ? 'border-[#f6e27a] bg-[#2a2105] text-[#f6e27a] shadow-[0_0_12px_rgba(246,226,122,0.3)]' : 'border-[#eab308]/40 text-[#fde047]'}`}
+              aria-label="VIP Party & Live Poker"
+              title="VIP Party & Live Poker Lounge"
+            >
+              <Wine size={13} className="text-[#fde047]" />
+              <span className="font-bold">PARTY</span>
+              <span className="rounded bg-red-600 px-1 py-0.5 text-[7px] font-black text-white shadow-sm animate-pulse">
+                LIVE
+              </span>
+            </button>
+          )}
           {/* Player Nametag & Identity */}
           <div className="flex items-center gap-1.5 shrink-0 ml-1">
             <Nametag name={playerName} compact />

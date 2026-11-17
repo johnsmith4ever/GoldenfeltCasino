@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { ChipsProvider } from './state/chips'
 import { ShopProvider } from './state/shop'
 import { PlayerProvider, usePlayer } from './state/profile'
@@ -9,20 +9,13 @@ import Properties from './pages/Properties'
 import Club from './pages/Club'
 import Bank from './pages/Bank'
 import Leaderboard from './pages/Leaderboard'
+import PartyLounge from './pages/PartyLounge'
 import Blackjack from './games/Blackjack'
 import Roulette from './games/Roulette'
 import Slots from './games/Slots'
 import Craps from './games/Craps'
 import Poker from './games/Poker'
 import Baccarat from './games/Baccarat'
-import SicBo from './games/SicBo'
-import War from './games/War'
-import HighLow from './games/HighLow'
-import Keno from './games/Keno'
-import Rocket from './games/Rocket'
-import Wheel from './games/Wheel'
-import Dice from './games/Dice'
-import CoinFlip from './games/CoinFlip'
 
 function PlayerStart() {
   const { players, createPlayer, switchPlayer } = usePlayer()
@@ -56,11 +49,24 @@ function PlayerStart() {
 function CasinoApp({ playerName }: { playerName: string }) {
   const [screen, setScreenState] = useState<Screen>(() => {
     try {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('party') || urlParams.get('join')) {
+        return 'party'
+      }
       const saved = sessionStorage.getItem('golden-felt-current-screen')
       if (saved) return saved as Screen
     } catch {}
     return 'lobby'
   })
+
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search)
+      if (urlParams.get('party') || urlParams.get('join')) {
+        setScreenState('party')
+      }
+    } catch {}
+  }, [])
 
   const setScreen = (s: Screen) => {
     try {
@@ -80,6 +86,7 @@ function CasinoApp({ playerName }: { playerName: string }) {
             onClub={() => setScreen('club')}
             onBank={() => setScreen('bank')}
             onLeaderboard={() => setScreen('leaderboard')}
+            onParty={() => setScreen('party')}
             playerName={playerName}
           />
           <main>
@@ -89,20 +96,13 @@ function CasinoApp({ playerName }: { playerName: string }) {
             {screen === 'club' && <Club onShop={() => setScreen('shop')} />}
             {screen === 'bank' && <Bank />}
             {screen === 'leaderboard' && <Leaderboard />}
+            {screen === 'party' && <PartyLounge onBack={() => setScreen('lobby')} />}
             {screen === 'blackjack' && <Blackjack />}
             {screen === 'roulette' && <Roulette />}
             {screen === 'slots' && <Slots />}
             {screen === 'craps' && <Craps />}
             {screen === 'poker' && <Poker />}
             {screen === 'baccarat' && <Baccarat />}
-            {screen === 'sicbo' && <SicBo />}
-            {screen === 'war' && <War />}
-            {screen === 'highlow' && <HighLow />}
-            {screen === 'keno' && <Keno />}
-            {screen === 'rocket' && <Rocket />}
-            {screen === 'wheel' && <Wheel />}
-            {screen === 'dice' && <Dice />}
-            {screen === 'coinflip' && <CoinFlip />}
           </main>
         </div>
       </ShopProvider>

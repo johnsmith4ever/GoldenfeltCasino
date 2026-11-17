@@ -147,7 +147,7 @@ const START_GRID: Grid = [
 ]
 
 export default function Slots() {
-  const { balance, bet, markHand, payout, freeSpinArmed, useFreeSpin } = useChips()
+  const { balance, bet, markHand, payout, freeSpinArmed, useFreeSpin, maxBet } = useChips()
   const narrow = useNarrow(560)
   const CELL = narrow ? 82 : 96
   const [chipVal, setChipValState] = useState(loadBet)
@@ -375,7 +375,7 @@ export default function Slots() {
 
         <div className="mt-4 flex flex-col items-center gap-3">
           <ChipSelector selected={chipVal} onSelect={setChipVal} max={balance} />
-          <button onClick={() => setChipVal(balance)} disabled={balance < 25} className="btn-ghost-gold min-h-[38px] rounded-lg px-4 text-[10px]">BET ALL</button>
+          <button onClick={() => setChipVal(Math.min(balance, maxBet))} disabled={balance < 25} className="btn-ghost-gold min-h-[38px] rounded-lg px-4 text-[10px]">BET ALL</button>
           <div className="flex w-full max-w-sm items-center gap-3">
             <button onClick={spin} disabled={spinning || (!freeSpinArmed && chipVal > balance)} className="btn-gold min-h-[52px] flex-1 rounded-xl py-3.5 text-base">
               {spinning ? 'SPINNING…' : freeSpinArmed ? 'FREE SPIN' : 'SPIN'}

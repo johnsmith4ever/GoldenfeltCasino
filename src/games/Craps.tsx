@@ -8,7 +8,7 @@ import { Die } from '../components/Die'
 interface RollLog { d1: number; d2: number; note: string }
 
 export default function Craps() {
-  const { balance, bet, markHand, payout, refund } = useChips()
+  const { balance, bet, markHand, payout, refund, maxBet } = useChips()
   const [chipVal, setChipVal] = useState(25)
   const [passBet, setPassBet] = useState(0)
   const [fieldBet, setFieldBet] = useState(0)
@@ -38,12 +38,14 @@ export default function Craps() {
 
   const betAll = () => {
     if (rolling || balance <= 0) return
-    const amount = balance
-    const target = point === null ? 'pass' : 'field'
-    if (!bet(amount, false)) return
+    const currentBet = point === null ? passBet : fieldBet
+    const available = Math.min(balance, Math.max(0, maxBet - currentBet))
+    if (available <= 0) return
+    const amount = Math.floor(available / 25) * 25
+    if (amount <= 0 || !bet(amount, false)) return
     sfx.chip()
     setResult(null)
-    if (target === 'pass') {
+    if (point === null) {
       setPassBet((b) => b + amount)
     } else {
       setFieldBet((b) => b + amount)

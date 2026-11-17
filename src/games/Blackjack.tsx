@@ -22,7 +22,7 @@ function saveLastBet(n: number) {
 interface Result { kind: 'win' | 'lose' | 'push'; title: string; detail?: string; amount?: number }
 
 export default function Blackjack() {
-  const { balance, bet, markHand, payout, refund } = useChips()
+  const { balance, bet, markHand, payout, refund, maxBet } = useChips()
   const [phase, setPhase] = useState<Phase>('betting')
   const [wager, setWager] = useState(0)
   const [lastBet, setLastBet] = useState(loadLastBet)
@@ -41,6 +41,7 @@ export default function Blackjack() {
   // Tapping a chip adds it to the bet. Each tap counts, so 3 taps on a 25 chip is a bet of 75.
   const addChip = (v: number) => {
     if (phase !== 'betting' || v > balance) return
+    if (wager + v > maxBet) return
     if (!bet(v, false)) return
     sfx.chip()
     setWager((w) => w + v)
@@ -56,7 +57,7 @@ export default function Blackjack() {
 
   /** Put last hand's bet back on the table (or as much of it as the balance allows). */
   const restoreBet = () => {
-    const target = Math.floor(Math.min(lastBet, balance) / 25) * 25
+    const target = Math.floor(Math.min(lastBet, balance, maxBet) / 25) * 25
     if (target < 25 || !bet(target, false)) return false
     setWager(target)
     return true
@@ -65,7 +66,9 @@ export default function Blackjack() {
     if (restoreBet()) { sfx.chip(); setCarried(true) }
   }
   const betAll = () => {
-    const amount = balance
+    const available = Math.min(balance, maxBet - wager)
+    if (available <= 0) return
+    const amount = Math.floor(available / 25) * 25
     if (amount <= 0 || !bet(amount, false)) return
     setWager((w) => w + amount)
     setCarried(false)

@@ -1,10 +1,100 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Spade, Dices, CircleDot, Cherry, Club, Crown, Dice5, Swords, ArrowUpDown, Grid3x3, Rocket, Disc, Coins, Sparkles, Building2 } from 'lucide-react'
+import {
+  Spade,
+  Dices,
+  CircleDot,
+  Cherry,
+  Club,
+  Crown,
+  Lock,
+  Sparkles,
+  Building2,
+} from 'lucide-react'
 import { type Screen, type GameId, RotatingSeal, StatsStrip } from '../components/GameShell'
 import { DailyGift } from './Shop'
+import { usePlayer } from '../state/profile'
 import { sfx } from '../lib/audio'
-import { getClubMembers } from '../lib/stakeAndClub'
-import { fetchGlobalClubMembers, isSupabaseConfigured, type GlobalClubMember } from '../lib/supabase'
+import { getClubMembers, getPlayerStake } from '../lib/stakeAndClub'
+import {
+  fetchGlobalClubMembers,
+  fetchCasinos,
+  isCasinoOwnedBy,
+  playerNameToUuid,
+  isSupabaseConfigured,
+  type GlobalClubMember,
+} from '../lib/supabase'
+
+function CasinoOwnershipSummaryPlaque({ onOpenProperties }: { onOpenProperties: () => void }) {
+  const { activeName } = usePlayer()
+  const playerName = activeName || 'Player'
+  const [ownedCount, setOwnedCount] = useState<number>(0)
+  const [totalCount, setTotalCount] = useState<number>(8)
+  const [stakePercent, setStakePercent] = useState<number>(0)
+
+  useEffect(() => {
+    let unmounted = false
+    const checkOwnership = async () => {
+      try {
+        const casinos = await fetchCasinos()
+        const myPid = playerNameToUuid(playerName)
+        const myOwned = (casinos || []).filter((c) => isCasinoOwnedBy(c, playerName, myPid))
+        const stake = getPlayerStake(playerName)
+        if (!unmounted) {
+          setOwnedCount(myOwned.length)
+          setTotalCount(casinos?.length || 8)
+          setStakePercent(stake.percent)
+        }
+      } catch {}
+    }
+    checkOwnership()
+    const timer = setInterval(checkOwnership, 6000)
+    return () => {
+      unmounted = true
+      clearInterval(timer)
+    }
+  }, [playerName])
+
+  const dominancePercent = totalCount > 0 ? ((ownedCount / totalCount) * 100).toFixed(0) : '0'
+
+  return (
+    <section className="mx-auto mb-8 max-w-6xl px-4">
+      <div className="panel-noir flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-[#c9a227]/40 bg-gradient-to-r from-black/90 via-[#1a1403]/85 to-black/90 p-4 sm:px-6 shadow-xl">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border-2 border-[#f6e27a]/50 bg-[#2a2105] shadow-[0_0_15px_rgba(246,226,122,0.3)]">
+            <Building2 size={24} className="text-[#f6e27a]" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-display text-[13px] font-bold tracking-[0.18em] text-[#f6e27a]">
+                CASINO EMPIRE OWNERSHIP
+              </span>
+              <span className="rounded bg-[#2a2105] border border-[#f6e27a]/50 px-2 py-0.5 text-[9px] font-black text-[#fde047]">
+                {ownedCount} / {totalCount} PROPERTIES OWNED ({dominancePercent}%)
+              </span>
+              {stakePercent > 0 && (
+                <span className="rounded bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 text-[9px] font-black text-emerald-400">
+                  {stakePercent.toFixed(1)}% HOUSE EQUITY
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-[#cbb98a]">
+              {ownedCount > 0
+                ? `You control ${ownedCount} of ${totalCount} casinos on the strip generating ongoing passive revenue.`
+                : 'Acquire casino deeds on the strip or stake chips into the central house liquidity reserve.'}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => { sfx.click(); onOpenProperties() }}
+          className="btn-gold flex items-center gap-1.5 rounded-full px-5 py-2.5 text-[11px] font-black tracking-wider shrink-0 shadow-lg"
+        >
+          <Sparkles size={13} className="text-[#140b02]" />
+          MANAGE EMPIRE &amp; REVENUE →
+        </button>
+      </div>
+    </section>
+  )
+}
 
 function HallOfFamePlaque({ onOpenClub }: { onOpenClub: () => void }) {
   const [globalMembers, setGlobalMembers] = useState<GlobalClubMember[]>([])
@@ -30,6 +120,7 @@ function HallOfFamePlaque({ onOpenClub }: { onOpenClub: () => void }) {
     }
     return Array.from(map.values())
   }, [globalMembers])
+
   return (
     <section className="mx-auto mb-8 max-w-6xl px-4">
       <div className="panel-noir flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#c9a227]/40 bg-gradient-to-r from-black/80 via-[#1c1505]/70 to-black/80 p-3 sm:px-5">
@@ -67,11 +158,11 @@ function HallOfFamePlaque({ onOpenClub }: { onOpenClub: () => void }) {
 }
 
 const MARQUEE_ITEMS = [
-  'BLACKJACK PAYS 3 TO 2', 'EUROPEAN ROULETTE', 'GRAND SLOTS', 'CRAPS', 'POKER ROOM', 'BACCARAT', 'SIC BO', 'KENO',
-  'PLAY MONEY ONLY', 'NO REAL WAGERING', 'THE HOUSE WELCOMES YOU',
+  'PRIVATE VIP TABLES ONLY', 'BLACKJACK PAYS 3 TO 2', 'EUROPEAN ROULETTE', 'GRAND SLOTS', 'HIGH ROLLER CRAPS', 'PRIVATE POKER ROOM', 'VIP BACCARAT',
+  'PLAY MONEY ONLY', 'EXCLUSIVE PRIVATE SALONS', 'THE HOUSE WELCOMES YOU',
 ]
 
-type Group = 'Featured games' | 'Casino classics' | 'Table games' | 'Quick games'
+type Group = 'Private Table Classics' | 'Private VIP Salons'
 
 const GAMES: {
   id: GameId
@@ -81,25 +172,16 @@ const GAMES: {
   icon: typeof Spade
   accent: string
   minBet: string
-  isPreRelease?: boolean
 }[] = [
-  { id: 'wheel', group: 'Featured games', name: 'Lucky Wheel', desc: 'High-volatility casino wheel. 15 zeros, 1.5x, 2x, 5x and a legendary 10x multiplier jackpot!', icon: Disc, accent: '#7c3aed', minBet: '25' },
-  { id: 'dice', group: 'Featured games', name: 'Lucky Dice', desc: 'High or Low dice roll with true casino odds. Predict right for a 1.95x payout!', icon: Dices, accent: '#059669', minBet: '25' },
-  { id: 'coinflip', group: 'Featured games', name: 'Coin Flip', desc: 'Pure 50/50 high-stakes coin toss. Heads or Tails pays 1.95x total return.', icon: Coins, accent: '#d97706', minBet: '25' },
-  { id: 'rocket', group: 'Featured games', name: 'Rocket (Closed)', desc: 'Rocket has been removed. It was really annoying to patch the money glitches, so please stop trying to find ways to cause hyperinflation.', icon: Rocket, accent: '#b45309', minBet: 'N/A' },
-  { id: 'blackjack', group: 'Casino classics', name: 'Blackjack', desc: 'Beat the dealer to twenty-one. Blackjack pays 3 to 2.', icon: Spade, accent: '#176148', minBet: '25' },
-  { id: 'roulette', group: 'Casino classics', name: 'Roulette', desc: 'Single-zero European wheel. Straight up pays 35 to 1.', icon: CircleDot, accent: '#5c0f14', minBet: '25' },
-  { id: 'slots', group: 'Casino classics', name: 'Grand Slots', desc: 'Three gilded reels. Triple diamonds pay 500 to 1.', icon: Cherry, accent: '#7a1220', minBet: '25' },
-  { id: 'craps', group: 'Casino classics', name: 'Craps', desc: 'Pass line and field. Seven out — or ride the point.', icon: Dices, accent: '#4a0d16', minBet: '25' },
-  { id: 'poker', group: 'Casino classics', name: 'Poker Room', desc: "Hold'em, Omaha, Seven-Card Stud, Three Card and Video Poker. New to poker? There's a guide.", icon: Club, accent: '#0e3d2c', minBet: '5' },
-  { id: 'baccarat', group: 'Table games', name: 'Baccarat', desc: 'Player, Banker or Tie. Closest to nine wins.', icon: Crown, accent: '#176148', minBet: '25' },
-  { id: 'sicbo', group: 'Table games', name: 'Sic Bo', desc: 'Three dice, dozens of bets. Small, Big, totals and triples.', icon: Dice5, accent: '#4a0d16', minBet: '25' },
-  { id: 'war', group: 'Table games', name: 'Casino War', desc: 'Highest card wins. A tie means war.', icon: Swords, accent: '#176148', minBet: '25' },
-  { id: 'highlow', group: 'Quick games', name: 'High-Low', desc: 'Higher or lower? Build a streak and cash out.', icon: ArrowUpDown, accent: '#5c0f14', minBet: '25' },
-  { id: 'keno', group: 'Quick games', name: 'Keno', desc: 'Pick up to ten of eighty numbers. Twenty are drawn.', icon: Grid3x3, accent: '#7a1220', minBet: '25' },
+  { id: 'blackjack', group: 'Private Table Classics', name: 'Private VIP Blackjack', desc: 'Beat the dealer to twenty-one. Blackjack pays 3 to 2 on your private VIP felt.', icon: Spade, accent: '#176148', minBet: '25' },
+  { id: 'roulette', group: 'Private Table Classics', name: 'Private European Roulette', desc: 'Single-zero European wheel. Straight up pays 35 to 1 in your private salon.', icon: CircleDot, accent: '#5c0f14', minBet: '25' },
+  { id: 'poker', group: 'Private Table Classics', name: 'Private Poker Room', desc: "Exclusive private tables: Hold'em, Omaha, Seven-Card Stud, Three Card and Video Poker.", icon: Club, accent: '#0e3d2c', minBet: '5' },
+  { id: 'craps', group: 'Private Table Classics', name: 'Private High Roller Craps', desc: 'Pass line and field with genuine true casino odds on your private dice felt.', icon: Dices, accent: '#4a0d16', minBet: '25' },
+  { id: 'baccarat', group: 'Private VIP Salons', name: 'Private VIP Baccarat', desc: 'Player, Banker or Tie. Closest to nine wins in the private high-limit room.', icon: Crown, accent: '#176148', minBet: '25' },
+  { id: 'slots', group: 'Private VIP Salons', name: 'Private Grand Slots', desc: 'Three gilded reels. Triple diamonds pay 500 to 1 on your private high-roller machine.', icon: Cherry, accent: '#7a1220', minBet: '25' },
 ]
 
-const GROUPS: Group[] = ['Featured games', 'Casino classics', 'Table games', 'Quick games']
+const GROUPS: Group[] = ['Private Table Classics', 'Private VIP Salons']
 
 export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
   return (
@@ -149,7 +231,38 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
             onClick={() => { sfx.click(); onSelect('shop') }}
             className="btn-ghost-gold min-h-[44px] rounded px-5 py-2 text-[11px]"
           >
-            VISIT THE SHOP — FELTS, CARD BACKS &amp; NAMETAGS
+            VISIT THE BOUTIQUE — FELTS, CARD BACKS &amp; NAMETAGS
+          </button>
+        </div>
+      </section>
+
+      {/* Live VIP Party & Poker Banner */}
+      <section className="mx-auto mb-8 max-w-6xl px-4">
+        <div className="panel-noir rounded-2xl border-2 border-[#f59e0b] bg-gradient-to-r from-[#2a1705] via-[#1a1403] to-[#2a1705] p-5 shadow-[0_0_25px_rgba(245,158,11,0.25)] flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <span className="text-4xl">🥂</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-display gold-text-bright text-lg font-black tracking-wider">
+                  VIP PARTY &amp; LIVE MULTIPLAYER POKER
+                </span>
+                <span className="rounded bg-red-600 px-1.5 py-0.5 text-[8px] font-black text-white animate-pulse">
+                  LIVE
+                </span>
+              </div>
+              <p className="text-xs text-[#cbb98a] mt-0.5">
+                Host private parties with custom room codes, pop champagne for the table, chat, and play live No-Limit Texas Hold'em with other real players.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              sfx.click()
+              onSelect('party')
+            }}
+            className="btn-gold rounded-xl px-6 py-2.5 text-xs font-black shrink-0 shadow-lg flex items-center gap-2"
+          >
+            <span>ENTER VIP PARTY LOUNGE</span> →
           </button>
         </div>
       </section>
@@ -157,36 +270,8 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
       {/* Hall of Fame Plaque (Compact) */}
       <HallOfFamePlaque onOpenClub={() => onSelect('club')} />
 
-      {/* Casino Stakes & Venues Banner */}
-      <section className="mx-auto mb-8 max-w-6xl px-4">
-        <div className="panel-noir flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#38bdf8]/40 bg-gradient-to-r from-black/85 via-[#071829]/75 to-black/85 p-3.5 sm:px-5 shadow-lg">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#38bdf8]/40 bg-[#071829] shadow">
-              <Building2 size={22} className="text-[#38bdf8]" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-display text-[13px] font-bold tracking-[0.18em] text-[#7dd3fc]">
-                  CASINO STAKE POOL &amp; PROPERTY DEEDS
-                </span>
-                <span className="rounded bg-[#0284c7]/30 border border-[#38bdf8]/50 px-2 py-0.5 text-[9px] font-black text-[#7dd3fc]">
-                  POOL + 8 VENUES
-                </span>
-              </div>
-              <p className="mt-0.5 text-[11px] text-[#93c5fd]">
-                Stake tokens into the community equity pool to own a cut of the casino, or buy sovereign venue deeds.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => { sfx.click(); onSelect('properties') }}
-            className="btn-gold flex items-center gap-1.5 rounded-full px-4 py-2 text-[10px] font-black tracking-wider shrink-0 shadow-md"
-          >
-            <Sparkles size={12} className="text-[#140b02]" />
-            BUY CASINO STAKES →
-          </button>
-        </div>
-      </section>
+      {/* Casino Empire & Ownership Banner */}
+      <CasinoOwnershipSummaryPlaque onOpenProperties={() => onSelect('properties')} />
 
       {/* Game cards, by kind */}
       {GROUPS.map((group) => (
@@ -211,15 +296,9 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
                   <div className="flex items-start justify-between">
                     <Icon size={34} strokeWidth={1.4} className="text-[#d4af37] transition-transform duration-300 group-hover:scale-110" />
                     <div className="flex items-center gap-1.5">
-                      {g.id === 'rocket' ? (
-                        <span className="rounded bg-red-950/60 border border-red-500/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-red-300">
-                          CLOSED
-                        </span>
-                      ) : g.isPreRelease ? (
-                        <span className="rounded bg-[#f59e0b]/25 border border-[#f59e0b]/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-[#fde047] shadow-[0_0_10px_rgba(245,158,11,0.4)]">
-                          FEATURED
-                        </span>
-                      ) : null}
+                      <span className="rounded bg-[#2a2105] border border-[#f6e27a]/60 px-2 py-0.5 text-[9px] font-black tracking-widest text-[#fde047] flex items-center gap-1 shadow-sm">
+                        <Lock size={10} className="text-[#f6e27a]" /> PRIVATE
+                      </span>
                       <span className="rounded-full border border-[#c9a227]/30 px-2.5 py-0.5 text-[10px] tracking-[0.2em] text-[#b3a06b]">
                         MIN {g.minBet}
                       </span>
@@ -228,22 +307,30 @@ export default function Lobby({ onSelect }: { onSelect: (s: Screen) => void }) {
                   <h3 className="font-display gold-text mt-5 text-2xl font-bold tracking-[0.12em]">{g.name.toUpperCase()}</h3>
                   <p className="mt-2 text-sm font-light leading-relaxed text-[#a89872]">{g.desc}</p>
                   <div className="mt-5 flex items-center gap-2 font-display text-[11px] font-bold tracking-[0.3em] text-[#d4af37]">
-                    TAKE A SEAT
+                    <span>ENTER PRIVATE SALON</span>
                     <span className="inline-block transition-transform duration-300 group-hover:translate-x-1.5">→</span>
                   </div>
                 </button>
               )
             })}
-            {group === 'Quick games' && (
-        <div className="rounded-xl border border-dashed border-[#c9a227]/30 p-6">
-          <h3 className="font-display text-sm font-bold tracking-[0.25em] text-[#b3a06b]">HOUSE RULES</h3>
-          <ul className="mt-4 space-y-2.5 text-[13px] font-light leading-relaxed text-[#8a7a5c]">
-            <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Complimentary chips — never real money.</li>
-            <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Broke? The cashier refills you, free.</li>
-            <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Dealer stands on all seventeens.</li>
-            <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Your balance is saved in this browser.</li>
-          </ul>
-        </div>
+            {group === 'Private VIP Salons' && (
+              <div className="rounded-xl border border-dashed border-[#c9a227]/30 p-6 bg-black/40 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Lock size={16} className="text-[#f6e27a]" />
+                    <h3 className="font-display text-sm font-bold tracking-[0.25em] text-[#f6e27a]">PRIVATE VIP HOUSE RULES</h3>
+                  </div>
+                  <ul className="space-y-2.5 text-[13px] font-light leading-relaxed text-[#cbb98a]">
+                    <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> 100% Private sessions — no public matchmaking or bots.</li>
+                    <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Genuine casino rules with true house math.</li>
+                    <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> Dealer stands on all seventeens in Blackjack.</li>
+                    <li className="flex gap-2"><span className="text-[#c9a227]">✦</span> All progression &amp; chips securely saved in your browser.</li>
+                  </ul>
+                </div>
+                <div className="mt-4 pt-3 border-t border-[#c9a227]/20 text-[10px] text-[#8a7a4d] uppercase font-bold tracking-widest">
+                  Golden Felt VIP Sovereign Lounge
+                </div>
+              </div>
             )}
           </div>
         </section>

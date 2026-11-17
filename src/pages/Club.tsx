@@ -177,21 +177,21 @@ export default function Club({ onShop }: { onShop?: () => void }) {
         </div>
       )}
 
-      {/* ===================== TOKEN PRESTIGE NOTICE ===================== */}
+      {/* ===================== PRESTIGE NOTICE ===================== */}
       <section className="mb-10 rounded-2xl border border-[#f59e0b]/40 bg-gradient-to-br from-[#1c1505] via-[#120f04] to-black p-6 shadow-[0_0_25px_rgba(245,158,11,0.15)] sm:p-7">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="rounded bg-[#f59e0b] px-2 py-0.5 text-[9px] font-black tracking-wider text-[#140b02]">
-                TOKEN ECONOMY PRESTIGE
+                HIGH ROLLER PRESTIGE
               </span>
-              <span className="text-[10px] tracking-[0.25em] text-[#a89872]">EXCLUSIVE TO THE TOKEN SHOP</span>
+              <span className="text-[10px] tracking-[0.25em] text-[#a89872]">EXCLUSIVE VIP BOUTIQUE</span>
             </div>
             <h2 className="font-display gold-text-bright mt-2 text-2xl font-black tracking-wide">
-              PRESTIGE NAMETAGS &amp; BADGES
+              PRESTIGE NAMETAGS, INSIGNIAS &amp; DECKS
             </h2>
             <p className="mt-2 max-w-xl text-[13px] text-[#cbb98a] leading-relaxed">
-              To stop hyperinflation and ensure genuine exclusivity, all collectible nametag tiers (Diamond Baron, The House, Supreme Founder, etc.) are strictly earned with scarce tokens in the Token Shop.
+              Showcase your casino wealth with progressive nametag tiers, rare badges, custom baizes, and high table limits.
             </p>
           </div>
           {onShop && (
@@ -202,7 +202,7 @@ export default function Club({ onShop }: { onShop?: () => void }) {
               }}
               className="btn-gold flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-[11px] font-bold tracking-wider shrink-0"
             >
-              <Sparkles size={14} /> VISIT TOKEN SHOP →
+              <Sparkles size={14} /> VISIT BOUTIQUE →
             </button>
           )}
         </div>
